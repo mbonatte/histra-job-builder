@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HiStrA Model Builder</title>
+  <link rel="stylesheet" href="/static/shared.css">
+  <style>
+    html, body { overflow: hidden; }
+    .page { height: 100%; display: grid; grid-template-rows: 52px 1fr; }
+    .workspace { min-height: 0; display: grid; grid-template-columns: minmax(430px, 500px) 1fr; }
+    .builder { overflow: auto; padding: 16px; border-right: 1px solid var(--border); background: linear-gradient(180deg, rgba(20,27,37,.99), rgba(13,19,27,.99)); }
+    .preview { position: relative; min-width: 0; min-height: 0; }
+    .intro { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .intro h1 { margin: 0; font-size: 21px; }
+    .intro p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+    .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; position: sticky; top: -16px; z-index: 8; margin: -16px -16px 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: rgba(15,21,29,.97); backdrop-filter: blur(12px); }
+    .actions .wide { grid-column: 1 / -1; }
+    .tabs { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px; margin-bottom: 10px; }
+    .tabs button { width: auto; min-width: max-content; color: var(--muted); }
+    .tabs button.active { color: var(--text); border-color: var(--accent); background: rgba(111,183,255,.1); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .section { margin-bottom: 11px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: rgba(24,34,46,.62); }
+    .section-head { display: flex; align-items: start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .section-head h2 { margin: 0; font-size: 14px; }
+    .section-head p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+    .inline { display: flex; align-items: end; gap: 8px; }
+    .inline .field { flex: 1; }
+    .inline button { width: auto; flex: 0 0 auto; }
+    .sequence { display: grid; gap: 9px; }
+    .sequence-card.span { border-left: 3px solid #60c9ff; }
+    .sequence-card.pier { border-left: 3px solid #ad89ff; }
+    .lane-row { display: grid; grid-template-columns: minmax(115px,1.3fr) minmax(75px,.8fr) minmax(90px,.8fr) auto; gap: 7px; align-items: end; margin-top: 7px; }
+    .material-card { margin-top: 8px; }
+    .material-card summary, .analysis-card summary { cursor: pointer; list-style: none; }
+    .material-card summary::-webkit-details-marker, .analysis-card summary::-webkit-details-marker { display:none; }
+    .material-summary { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+    .material-summary strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .properties { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin-top: 10px; }
+    .analysis-row { display: grid; grid-template-columns: minmax(120px,1fr) 1fr 1fr auto; gap: 7px; align-items: end; margin-top: 8px; }
+    .scenario-editor { min-height: 95px; resize: vertical; font: 11px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .json-editor { min-height: 430px; resize: vertical; font: 11px/1.48 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
+    .helper { margin-top: 6px; color: var(--muted); font-size: 11px; }
+    .summary-strip { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 7px; margin-top: 9px; }
+    .viewer-controls.top-left { top: 12px; left: 12px; }
+    .viewer-controls.top-right { top: 12px; right: 12px; }
+    .viewer-controls.bottom-left { left: 12px; bottom: 12px; max-width: min(520px,72%); display: block; color: var(--muted); font-size: 12px; }
+    .viewer-controls label { display: flex; align-items: center; gap: 6px; color: var(--text); }
+    .viewer-controls input[type="range"] { width: 95px; min-height: 0; padding:0; border:0; background:transparent; }
+    .legend { position: absolute; z-index: 3; right: 12px; top: 62px; display: grid; gap: 4px; max-height: 190px; max-width: 220px; overflow: auto; padding: 8px; border: 1px solid rgba(90,130,160,.28); border-radius: 9px; background: rgba(12,17,24,.78); backdrop-filter: blur(10px); }
+    .legend-row { display:grid;grid-template-columns:11px minmax(0,1fr);align-items:center;gap:6px;color:var(--muted);font-size:10px; }
+    .legend-row i { width:11px;height:11px;border-radius:2px;border:1px solid #ffffff44; }
+    .legend-row span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+    #jsonFile { display:none; }
+    @media (max-width: 980px) {
+      html, body { overflow: auto; }
+      .page { height: auto; min-height: 100%; }
+      .workspace { grid-template-columns: 1fr; grid-template-rows: auto 55vh; }
+      .builder { overflow: visible; border-right: 0; border-bottom: 1px solid var(--border); }
+      .preview { min-height: 55vh; }
+    }
+    @media (max-width: 560px) {
+      .workspace { grid-template-rows: auto 48vh; }
+      .grid.two, .grid.three, .grid.four, .properties { grid-template-columns: 1fr; }
+      .lane-row, .analysis-row { grid-template-columns: 1fr 1fr; }
+      .lane-row .name, .analysis-row .name { grid-column: 1 / -1; }
+    }
+  </style>
+  <script type="importmap">
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/"}}
+  </script>
+</head>
+<body>
+<div class="page">
+  <nav class="top-nav">
+    <div class="brand"><strong>HiStrA Tools</strong><span>server-side HRX workflow</span></div>
+    <div class="nav-links"><a class="active" href="/generator">Model Builder</a><a href="/viewer">Model Viewer</a></div>
+  </nav>
+  <div class="workspace">
+    <aside class="builder">
+      <div class="actions">
+        <button id="previewButton" class="primary">Generate preview</button>
+        <button id="downloadButton" disabled>Download HRX</button>
+        <button id="jobJsonButton" disabled>Download job JSON</button>
+        <button id="bundleButton" disabled>Download bundle</button>
+        <label class="button ghost wide" for="jsonFile">Import work-job JSON<input id="jsonFile" type="file" accept=".json,application/json"></label>
+      </div>
+      <div class="intro"><div><h1>Model Builder</h1><p>Build the bridge, materials, analyses and mesh settings. Python generates the preview and final HRX.</p></div><span id="templateBadge" class="badge">model.hrx</span></div>
+      <div class="tabs" role="tablist">
+        <button data-tab="geometry" class="active">Geometry</button><button data-tab="job">Work job</button><button data-tab="materials">Materials</button><button data-tab="analyses">Analyses</button><button data-tab="settings">Mesh & config</button><button data-tab="json">Advanced JSON</button>
+      </div>
+
+      <section id="tab-geometry" class="tab-panel active">
+        <div class="section">
+          <div class="section-head"><div><h2>Bridge definition</h2><p>Global dimensions and mesh target.</p></div></div>
+          <div class="grid three">
+            <div class="field"><label>Job ID / HRX basename</label><input id="jobId" type="text" pattern="[A-Za-z0-9][A-Za-z0-9._-]*"></div>
+            <div class="field"><label>Number of spans</label><input id="spanCount" type="number" min="1" max="20" step="1"></div>
+            <div class="field"><label>Bridge width</label><input id="bridgeWidth" type="number" min="0.001" step="1"></div>
+            <div class="field"><label>Target mesh length (Nl)</label><input id="meshLength" type="number" min="0.001" step="1"></div>
+            <div class="field"><label>Backfill top H1</label><input id="backfillHeight" type="number" step="1"></div>
+            <div class="field"><label>Z level</label><input id="zLevel" type="number" step="1"></div>
+            <div class="field"><label>Slope</label><input id="slope" type="number" step="0.001"></div>
+            <div class="field"><label>Inclination angle</label><input id="inclination" type="number" step="0.001"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:7px;margin-top:9px"><input id="autoWidth" type="checkbox" checked> Set bridge width from lane total</label>
+          <label style="display:flex;align-items:center;gap:7px;margin-top:7px"><input id="autoOrigins" type="checkbox" checked> Automatically position supports</label>
+        </div>
+
+        <div class="section">
+          <div class="section-head"><div><h2>Lane layers</h2><p>Transverse strips representing backfill and spandrel walls.</p></div><button id="addLane" style="width:auto">Add lane</button></div>
+          <div id="lanes"></div>
+          <div class="summary-strip"><div class="stat"><strong id="laneWidthTotal">—</strong><span>lane width</span></div><div class="stat"><strong id="laneCount">—</strong><span>layers</span></div><div class="stat"><strong id="spanSummary">—</strong><span>spans</span></div><div class="stat"><strong id="pierSummary">—</strong><span>piers</span></div></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head"><div><h2>Abutments</h2><p>Left and right support geometry.</p></div></div>
+          <div id="abutments" class="grid two"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-head"><div><h2>Span and pier sequence</h2><p>The number of pier cards follows the span count.</p></div></div>
+          <div id="sequence" class="sequence"></div>
+        </div>
+      </section>
+
+
+      <section id="tab-job" class="tab-panel">
+        <div class="section">
+          <div class="section-head"><div><h2>Work-job identity</h2><p>Runner metadata stays in JSON and is never written into the HRX.</p></div></div>
+          <div class="grid three">
+            <div class="field"><label>Schema version</label><input id="schemaVersion" type="text" value="1.0" readonly></div>
+            <div class="field"><label>Input template path</label><input id="modelPath" type="text" value="model.hrx"></div>
+            <div class="field"><label>Scenario ID</label><input id="scenarioId" type="text"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div><h2>Runner mesh stage</h2><p>This lowercase mesh block controls the work runner, not geometry discretisation.</p></div></div>
+          <div class="grid three">
+            <div class="field"><label>Enabled</label><select id="jobMeshEnabled"><option value="false">No</option><option value="true">Yes</option></select></div>
+            <div class="field"><label>Analysis name</label><input id="jobMeshAnalysis" type="text"></div>
+            <div class="field"><label>Timeout (seconds)</label><input id="jobMeshTimeout" type="number" min="1" step="1"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div><h2>Scour material mapping</h2><p>Used later by the analysis worker when deleting foundation interfaces.</p></div></div>
+          <div class="grid two">
+            <div class="field"><label>Foundation interface materials</label><input id="foundationInterfaceMaterials" type="text" placeholder="Foundation_Soil, Soil"></div>
+            <div class="field"><label>Scoured interface material</label><input id="scouredInterfaceMaterial" type="text" placeholder="Soil_removed"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div><h2>Result validation</h2><p>Checks performed by the work runner after analyses finish.</p></div></div>
+          <div class="grid three">
+            <div class="field"><label>Require completed state</label><select id="requireCompleted"><option value="true">Yes</option><option value="false">No</option></select></div>
+            <div class="field"><label>Require results database</label><select id="requireDatabase"><option value="true">Yes</option><option value="false">No</option></select></div>
+            <div class="field"><label>Minimum result bytes</label><input id="minimumResultsBytes" type="number" min="0" step="1"></div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-head"><div><h2>Metadata</h2><p>Free JSON metadata retained in the generated work job.</p></div></div>
+          <textarea id="metadataEditor" class="scenario-editor" spellcheck="false"></textarea>
+        </div>
+      </section>
+
+      <section id="tab-materials" class="tab-panel">
+        <div class="section"><div class="section-head"><div><h2>Material patches</h2><p>Values are applied to matching keys in model.hrx. Names are verified by the server.</p></div><button id="addMaterial" style="width:auto">Add patch</button></div><div id="materials"></div></div>
+      </section>
+
+      <section id="tab-analyses" class="tab-panel">
+        <div class="section">
+          <div class="section-head"><div><h2>Default analysis parameters</h2><p>Each analysis inherits these values unless overridden.</p></div></div>
+          <div class="grid three"><div class="field"><label>Convergence tolerance</label><input id="defaultTolerance" type="number" min="0.0000001" step="0.001"></div><div class="field"><label>Number of eigen modes</label><input id="defaultEigenModes" type="number" min="1" step="1"></div><div class="field"><label>Maximum iterations</label><input id="defaultIterations" type="number" min="1" step="1"></div></div>
+        </div>
+        <div class="section"><div class="section-head"><div><h2>Analyses</h2><p>The scenario payload is retained for later analysis-time interface processing.</p></div><button id="addAnalysis" style="width:auto">Add analysis</button></div><div id="analyses"></div></div>
+      </section>
+
+      <section id="tab-settings" class="tab-panel">
+        <div class="section"><div class="section-head"><div><h2>Mesh settings</h2><p>These controls are already accepted by the Python API.</p></div></div><div class="grid three">
+          <div class="field"><label>Max length override</label><input id="maxLength" type="number" min="0.0001" step="1"></div>
+          <div class="field"><label>Node tolerance</label><input id="nodeTolerance" type="number" min="0.000000001" step="0.00001"></div>
+          <div class="field"><label>Arc divisions</label><input id="arcDivisions" type="number" min="1" step="1"></div>
+          <div class="field"><label>Arc division mode</label><select id="arcMode"><option value="observed-even">Observed even</option><option value="fixed">Fixed</option></select></div>
+        </div></div>
+        <div class="section"><div class="section-head"><div><h2>Advanced options</h2><p>Optional template patches. Empty fields preserve model.hrx values.</p></div></div><div class="grid three">
+          <div class="field"><label>InterfaceNrow</label><input id="interfaceNrow" type="number" min="1" step="1"></div>
+          <div class="field"><label>Arch quad max length</label><input id="archMaxLength" type="number" min="0.001" step="1"></div>
+          <div class="field"><label>Wall quad max length</label><input id="wallMaxLength" type="number" min="0.001" step="1"></div>
+        </div></div>
+      </section>
+
+      <section id="tab-json" class="tab-panel">
+        <div class="section"><div class="section-head"><div><h2>Request JSON</h2><p>Use this for properties not yet represented by the form.</p></div><div style="display:flex;gap:6px"><button id="formToJson" style="width:auto">Refresh from form</button><button id="jsonToForm" style="width:auto">Apply to form</button></div></div><textarea id="jsonEditor" class="json-editor" spellcheck="false"></textarea><div class="helper">The server remains the source of truth and performs full Pydantic and HRX validation.</div></div>
+      </section>
+
+      <div class="section"><div class="section-head"><div><h2>Generation status</h2></div></div><div id="status" class="status">Loading model.hrx template and example request…</div><div class="stat-grid" style="margin-top:8px"><div class="stat"><strong id="nodeCount">—</strong><span>nodes</span></div><div class="stat"><strong id="quadCount">—</strong><span>quads</span></div><div class="stat"><strong id="pointCount">—</strong><span>model points</span></div></div></div>
+    </aside>
+
+    <main class="preview" id="viewport">
+      <div id="message" class="viewer-message">Generate a server preview to inspect the model.</div>
+      <div class="viewer-controls top-left"><button data-view="front">Front</button><button data-view="top">Top</button><button data-view="side">Side</button><button data-view="iso">Iso</button><button id="fitView">Fit</button></div>
+      <div class="viewer-controls top-right" style="flex-wrap:wrap;max-width:min(650px,72%)"><select id="colorBy"><option value="material">Material</option><option value="group">Component</option><option value="lane">Lane</option><option value="layer">Layer</option></select><label><input id="edges" type="checkbox" checked> Edges</label><label><input id="nodes" type="checkbox"> Nodes</label><label><input id="modelPointToggle" type="checkbox" checked> Points</label><label><input id="extrude" type="checkbox" checked> Extrude</label><label>Scale <input id="thicknessScale" type="range" min="0" max="1" step="0.01" value="1"><output id="thicknessScaleOut">1.00</output></label><label>Opacity <input id="opacity" type="range" min="0.1" max="1" step="0.01" value="0.94"><output id="opacityOut">0.94</output></label></div>
+      <div class="viewer-controls bottom-left"><div><strong id="selectionTitle">Viewer</strong></div><div id="selectionText">Orbit, pan and zoom use the same interaction model as the standalone quad viewer.</div></div>
+      <div id="legend" class="legend" hidden></div>
+      <div class="viewer-hint">Left drag: orbit · wheel: zoom · right drag: pan · click: inspect</div>
+    </main>
+  </div>
+</div>
+<script type="module" src="/static/generator.js"></script>
+</body>
+</html>
