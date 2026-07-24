@@ -31,7 +31,7 @@
     .sequence { display: grid; gap: 9px; }
     .sequence-card.span { border-left: 3px solid #60c9ff; }
     .sequence-card.pier { border-left: 3px solid #ad89ff; }
-    .lane-row { display: grid; grid-template-columns: minmax(115px,1.3fr) minmax(75px,.8fr) minmax(90px,.8fr) auto; gap: 7px; align-items: end; margin-top: 7px; }
+    .lane-row { display: grid; grid-template-columns: minmax(115px,1.3fr) minmax(70px,.7fr) minmax(70px,.7fr) minmax(90px,.8fr) auto; gap: 7px; align-items: end; margin-top: 7px; }
     .material-card { margin-top: 8px; }
     .material-card summary, .analysis-card summary { cursor: pointer; list-style: none; }
     .material-card summary::-webkit-details-marker, .analysis-card summary::-webkit-details-marker { display:none; }
@@ -52,7 +52,7 @@
     .legend-row { display:grid;grid-template-columns:11px minmax(0,1fr);align-items:center;gap:6px;color:var(--muted);font-size:10px; }
     .legend-row i { width:11px;height:11px;border-radius:2px;border:1px solid #ffffff44; }
     .legend-row span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-    #jsonFile { display:none; }
+    #jsonFile, #hrxFile { display:none; }
     @media (max-width: 980px) {
       html, body { overflow: auto; }
       .page { height: auto; min-height: 100%; }
@@ -84,6 +84,7 @@
         <button id="downloadButton" disabled>Download HRX</button>
         <button id="jobJsonButton" disabled>Download job JSON</button>
         <button id="bundleButton" disabled>Download bundle</button>
+        <label class="button ghost wide" for="hrxFile">Import HRX → editable work job<input id="hrxFile" type="file" accept=".hrx,.xml,application/xml,text/xml"></label>
         <label class="button ghost wide" for="jsonFile">Import work-job JSON<input id="jsonFile" type="file" accept=".json,application/json"></label>
       </div>
       <div class="intro"><div><h1>Model Builder</h1><p>Build the bridge, materials, analyses and mesh settings. Python generates the preview and final HRX.</p></div><span id="templateBadge" class="badge">model.hrx</span></div>
@@ -99,7 +100,7 @@
             <div class="field"><label>Number of spans</label><input id="spanCount" type="number" min="1" max="20" step="1"></div>
             <div class="field"><label>Bridge width</label><input id="bridgeWidth" type="number" min="0.001" step="1"></div>
             <div class="field"><label>Target mesh length (Nl)</label><input id="meshLength" type="number" min="0.001" step="1"></div>
-            <div class="field"><label>Backfill top H1</label><input id="backfillHeight" type="number" step="1"></div>
+            <div class="field"><label>Layer 1 height H1</label><input id="backfillHeight" type="number" step="1"></div><div class="field"><label>Layer 2 height H2</label><input id="backfillHeight2" type="number" min="0" step="1"></div><div class="field"><label>Layer 3 height H3</label><input id="backfillHeight3" type="number" min="0" step="1"></div>
             <div class="field"><label>Z level</label><input id="zLevel" type="number" step="1"></div>
             <div class="field"><label>Slope</label><input id="slope" type="number" step="0.001"></div>
             <div class="field"><label>Inclination angle</label><input id="inclination" type="number" step="0.001"></div>

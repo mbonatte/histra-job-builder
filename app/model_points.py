@@ -139,3 +139,29 @@ def make_model_point(archetype: etree._Element | None, selection: ModelPointSele
         },
     )
     return element
+
+
+def existing_model_points(tree: etree._ElementTree) -> list[ModelPointSelection]:
+    """Return existing HRX model points as selections for reports/previews."""
+
+    result: list[ModelPointSelection] = []
+    for index, element in enumerate(direct_children(tree.getroot(), "ModelPoint"), start=1):
+        raw_point = element.get("Point") or "0;0;0"
+        point = parse_vector(raw_point)
+        node_key_raw = element.get("ElementKey") or element.get("IdElement") or "0"
+        try:
+            node_key = int(node_key_raw)
+        except ValueError:
+            node_key = 0
+        name = element.get("Name") or element.get("Description") or f"ModelPoint_{index}"
+        result.append(
+            ModelPointSelection(
+                name=name,
+                node_key=node_key,
+                point=point,
+                target=list(point),
+                distance=0.0,
+                component="imported",
+            )
+        )
+    return result

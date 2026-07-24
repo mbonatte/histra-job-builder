@@ -22,6 +22,7 @@ class Lane(StrictModel):
     Width: float = Field(gt=0)
     MaterialKey: str
     Description: Optional[str] = None
+    Height: float = Field(default=0.0, ge=0)
 
 
 class BridgeDefinitionPatch(StrictModel):
@@ -37,8 +38,13 @@ class BridgeDefinitionPatch(StrictModel):
 class SupportPatch(StrictModel):
     AbutmentKind: Optional[str] = None
     H: Optional[float] = None
+    b1: Optional[float] = Field(default=None, ge=0)
     b2: Optional[float] = Field(default=None, gt=0)
+    b3: Optional[float] = Field(default=None, ge=0)
+    w1: Optional[float] = Field(default=None, ge=0)
     w2: Optional[float] = Field(default=None, gt=0)
+    w3: Optional[float] = Field(default=None, ge=0)
+    VerticalAllignment: Optional[str] = None
     Hsp1: Optional[float] = None
     Hsp2: Optional[float] = None
     Hf: Optional[float] = Field(default=None, ge=0)
@@ -67,6 +73,7 @@ class SpanPatch(StrictModel):
     Dz: Optional[float] = None
     MaterialKey: Optional[str] = None
     MaterialPulvinoKey: Optional[str] = None
+    Circolare: Optional[bool | str] = None
 
 
 class ElevationPatch(StrictModel):
@@ -76,8 +83,18 @@ class ElevationPatch(StrictModel):
     H3: float = 0.0
 
 
+class BackfillLayerPatch(StrictModel):
+    Tag: str
+    MaterialKey: Optional[str] = None
+    MaterialKey2: Optional[str] = None
+    UniformMaterial: Optional[bool | str] = None
+    RowIndexMaterial: Optional[int | str] = None
+    GenerateComputationalElements: Optional[bool | str] = None
+
+
 class ElevationsPatch(StrictModel):
     Elevations: List[ElevationPatch]
+    Layers: List[BackfillLayerPatch] = Field(default_factory=list)
 
 
 class GeometryPatch(StrictModel):
@@ -134,6 +151,7 @@ class MeshPatch(StrictModel):
     NodeTolerance: float = Field(default=1e-5, gt=0)
     ArcDivisionMode: str = "observed-even"
     ArcDivisions: Optional[int] = Field(default=None, gt=0)
+    PreserveImportedGeometry: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +159,22 @@ class MeshPatch(StrictModel):
 # ---------------------------------------------------------------------------
 
 
+class ImportedModelState(StrictModel):
+    template_path: str
+    source_filename: str
+    source_sha256: str
+    fingerprints: Dict[str, str]
+    preserve_exact_if_unchanged: bool = True
+    preserve_geometry_if_unchanged: bool = True
+    preserve_analyses_if_unchanged: bool = True
+    preserve_model_points_if_unchanged: bool = True
+
+
 class JobModelReference(StrictModel):
     path: str = "model.hrx"
+    template_path: Optional[str] = None
+    source_sha256: Optional[str] = None
+    imported: Optional[ImportedModelState] = None
 
     @model_validator(mode="after")
     def path_is_a_file(self) -> "JobModelReference":

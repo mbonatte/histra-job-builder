@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import os
 from pathlib import Path
 from typing import Iterable
 
@@ -25,6 +27,63 @@ class TemplateRepository:
 
     def load(self) -> etree._ElementTree:
         return parse_xml(self.path)
+
+
+class TemplateRegistry:
+    """Resolve canonical and imported HRX templates without allowing path traversal."""
+
+    def __init__(self, default_path: Path, imported_dir: Path | None = None):
+        self.default_path = default_path.resolve()
+        configured = os.getenv("HISTRA_TEMPLATE_DIR")
+        self.imported_dir = Path(configured).resolve() if configured else (imported_dir or default_path.parent / "imported").resolve()
+        self.imported_dir.mkdir(parents=True, exist_ok=True)
+
+    def import_bytes(self, data: bytes, source_filename: str) -> tuple[Path, str]:
+        digest = hashlib.sha256(data).hexdigest()
+        suffix = Path(source_filename).suffix.lower() or ".hrx"
+        if suffix != ".hrx":
+            suffix = ".hrx"
+        path = self.imported_dir / f"{digest}{suffix}"
+        if not path.exists():
+            path.write_bytes(data)
+        return path, digest
+
+    def relative_name(self, path: Path) -> str:
+        path = path.resolve()
+        try:
+            return path.relative_to(self.default_path.parent.resolve()).as_posix()
+        except ValueError:
+            return path.name
+
+    def resolve(self, model_reference) -> Path:
+        candidate = getattr(model_reference, "template_path", None) or getattr(model_reference, "path", None)
+        if not candidate or candidate == self.default_path.name:
+            return self.default_path
+        raw = Path(str(candidate))
+        if raw.is_absolute():
+            resolved = raw.resolve()
+            allowed_roots = [self.default_path.parent.resolve(), self.imported_dir]
+            if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+                raise ValueError("model.template_path is outside the configured template directory")
+            if not resolved.exists():
+                raise FileNotFoundError(f"HRX template was not found: {candidate}")
+            return resolved
+        if any(part == ".." for part in raw.parts):
+            raise ValueError("model.template_path must not contain '..'")
+        for root in (self.default_path.parent.resolve(), self.imported_dir):
+            resolved = (root / raw).resolve()
+            if (resolved == root or root in resolved.parents) and resolved.exists():
+                return resolved
+        # Imported JSON may contain only the digest filename.
+        resolved = (self.imported_dir / raw.name).resolve()
+        if resolved.exists():
+            return resolved
+        # Generated runner jobs point model.path to the output artifact.  When
+        # no explicit template_path/import metadata is present, regeneration
+        # remains backward-compatible and uses the canonical model.hrx.
+        if getattr(model_reference, "template_path", None) is None and getattr(model_reference, "imported", None) is None:
+            return self.default_path
+        raise FileNotFoundError(f"HRX template was not found: {candidate}")
 
 
 class TemplatePatcher:
@@ -71,18 +130,17 @@ class TemplatePatcher:
         if lanes is None:
             return
         lane_root = ensure_child(bridge, "Corsie")
-        archetype = first_direct(lane_root, "Corsia")
+        archetypes = direct_children(lane_root, "Corsia")
         for child in list(lane_root):
             lane_root.remove(child)
         for index, lane_patch in enumerate(lanes):
-            lane = clone(archetype, "Corsia")
-            lane.set("Key", str(index))
-            lane.set("Name", lane_patch.Name)
-            lane.set("Description", lane_patch.Description or lane_patch.Name)
-            lane.set("Width", str(lane_patch.Width))
-            lane.set("Height", lane.get("Height", "0"))
-            lane.set("AllowVehicle", "false")
-            lane.set("MaterialKey", str(lane_patch.MaterialKey))
+            source = archetypes[index] if index < len(archetypes) else (archetypes[-1] if archetypes else None)
+            lane = clone(source, "Corsia")
+            values = lane_patch.model_dump(exclude_none=True)
+            values.setdefault("Key", str(index))
+            values.setdefault("Description", lane_patch.Description or lane_patch.Name)
+            set_attributes(lane, values)
+            lane.set("Key", str(values.get("Key", index)))
             lane_root.append(lane)
 
         declared_width = float(bridge.get("Width", "0"))
@@ -148,8 +206,22 @@ class TemplatePatcher:
             items.remove(child)
         for item_patch in self.request.Geometry.Elevations.Elevations:
             item = clone(archetype, "Elevation")
-            set_attributes(item, item_patch.model_dump())
+            set_attributes(item, item_patch.model_dump(exclude_none=True))
             items.append(item)
+
+        layers = self.request.Geometry.Elevations.Layers
+        if layers:
+            existing = {child.tag: copy.deepcopy(child) for child in direct_children(root) if child.tag.startswith("Layer")}
+            for child in list(root):
+                if isinstance(child.tag, str) and child.tag.startswith("Layer"):
+                    root.remove(child)
+            for layer_patch in layers:
+                tag = layer_patch.Tag
+                layer = clone(existing.get(tag), tag)
+                values = layer_patch.model_dump(exclude_none=True)
+                values.pop("Tag", None)
+                set_attributes(layer, values)
+                root.append(layer)
 
     def _patch_materials(self, root: etree._Element) -> None:
         templates = direct_children(root, "Template")
@@ -175,4 +247,19 @@ class TemplatePatcher:
         if options is None:
             options = etree.Element("AdvancedOptionsDefault")
             root.insert(3, options)
-        set_attributes(options, self.request.advanced_options.model_dump(exclude_none=True))
+        values = self.request.advanced_options.model_dump(exclude_none=True)
+
+        # HiStrA's global target-mesh control updates the bridge definition and
+        # both bridge-specific mesher limits together.  Component-specific
+        # controls can be exposed later; for now the public Nl field is the
+        # authoritative value so imported jobs behave like the software UI.
+        nl = self.request.Geometry.BridgeDefinition.Nl
+        if nl is not None:
+            for key in ("ArcoMesherQuadLengthMax", "WallMesherQuadLengthMax"):
+                supplied = values.get(key)
+                if supplied is not None and abs(float(supplied) - float(nl)) > 1e-9:
+                    self.warnings.append(
+                        f"Config.{key}={supplied} was synchronized to BridgeDefinition.Nl={nl}"
+                    )
+                values[key] = nl
+        set_attributes(options, values)

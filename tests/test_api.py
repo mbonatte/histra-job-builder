@@ -75,3 +75,30 @@ def test_ui_pages():
     shared = client.get("/static/viewer-core.js")
     assert shared.status_code == 200
     assert "class QuadViewer" in shared.text
+
+
+def test_import_and_roundtrip_model1():
+    model1 = ROOT / "app" / "templates" / "imported" / "c2736ca1b816be3e0f1fc8989ad5a4b497fac4fc5399a0c09736058fc82575c6.hrx"
+    with model1.open("rb") as handle:
+        imported = client.post(
+            "/api/jobs/import",
+            files={"file": ("Model1.hrx", handle, "application/xml")},
+        )
+    assert imported.status_code == 200, imported.text
+    job = imported.json()
+    assert job["job_id"] == "Model1"
+    assert job["model"]["template_path"].startswith("imported/")
+    assert job["Geometry"]["Spans"][0]["Tb"] == 70.0
+    assert job["Geometry"]["Spans"][0]["Tt"] == 40.0
+
+    generated = client.post("/api/jobs/generate/hrx", json=job)
+    assert generated.status_code == 200, generated.text
+    assert generated.content == model1.read_bytes()
+
+    with model1.open("rb") as handle:
+        report = client.post(
+            "/api/jobs/roundtrip/validate",
+            files={"file": ("Model1.hrx", handle, "application/xml")},
+        )
+    assert report.status_code == 200, report.text
+    assert report.json()["roundtrip"]["exact_match"] is True

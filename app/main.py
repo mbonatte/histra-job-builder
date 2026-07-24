@@ -6,26 +6,29 @@ import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from .import_hrx import imported_job_payload
+from .roundtrip import compare_hrx
 from .schemas import GenerationRequest
 from .service import GeneratorService
+from .template import TemplateRepository
 from .work_jobs import generated_work_job, generation_report, validate_requested_model_points
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_PATH = BASE_DIR / "templates" / "model.hrx"
 STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="HiStrA HRX Work-Job Generator", version="0.2.0")
+app = FastAPI(title="HiStrA HRX Work-Job Generator", version="0.5.0")
 service = GeneratorService(TEMPLATE_PATH)
 
 
 def _generate_validated(request: GenerationRequest):
     try:
         result = service.generate(request)
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     work_job_errors = validate_requested_model_points(request, result)
     if work_job_errors:
@@ -43,10 +46,11 @@ def _generate_validated(request: GenerationRequest):
     return result
 
 
-def _template_metadata() -> tuple[str | None, str | None]:
-    tree = service.repository.load()
+def _template_metadata(request: GenerationRequest | None = None) -> tuple[str | None, str | None, str]:
+    path = service.resolve_template(request) if request is not None else TEMPLATE_PATH
+    tree = TemplateRepository(path).load()
     root = tree.getroot()
-    return root.get("version"), root.get("WizardType")
+    return root.get("version"), root.get("WizardType"), path.name
 
 
 def _download_headers(filename: str) -> dict[str, str]:
@@ -96,6 +100,52 @@ def work_job_example():
 
 
 # ---------------------------------------------------------------------------
+# HRX import / round-trip API
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/jobs/import")
+async def import_hrx_job(file: UploadFile = File(...), job_id: str | None = Form(default=None)):
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="The uploaded HRX file is empty")
+    try:
+        payload = imported_job_payload(
+            data,
+            file.filename or "imported-model.hrx",
+            registry=service.registry,
+            job_id=job_id,
+        )
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return JSONResponse(content=payload)
+
+
+@app.post("/api/jobs/roundtrip/validate")
+async def validate_hrx_roundtrip(file: UploadFile = File(...), job_id: str | None = Form(default=None)):
+    source = await file.read()
+    if not source:
+        raise HTTPException(status_code=422, detail="The uploaded HRX file is empty")
+    try:
+        payload = imported_job_payload(
+            source,
+            file.filename or "imported-model.hrx",
+            registry=service.registry,
+            job_id=job_id,
+        )
+        request = GenerationRequest.model_validate(payload)
+        result = _generate_validated(request)
+        comparison = compare_hrx(source, result.xml)
+    except (ValueError, KeyError, FileNotFoundError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "job": payload,
+        "roundtrip": comparison,
+        "hrx_validation": result.validation.model_dump(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Work-job API
 # ---------------------------------------------------------------------------
 
@@ -104,7 +154,7 @@ def work_job_example():
 def preview_job(request: GenerationRequest):
     try:
         return service.preview(request)
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -123,11 +173,11 @@ def generate_job_hrx(request: GenerationRequest):
 @app.post("/api/jobs/generate/json")
 def generate_job_json(request: GenerationRequest):
     result = _generate_validated(request)
-    template_version, _ = _template_metadata()
+    template_version, _, template_name = _template_metadata(request)
     payload = generated_work_job(
         request,
         result,
-        template_name=TEMPLATE_PATH.name,
+        template_name=template_name,
         template_version=template_version,
     )
     return Response(
@@ -155,11 +205,11 @@ def generate_job_bundle(request: GenerationRequest):
     """Download the HRX, runner-ready work job, and validation report together."""
 
     result = _generate_validated(request)
-    template_version, _ = _template_metadata()
+    template_version, _, template_name = _template_metadata(request)
     work_job = generated_work_job(
         request,
         result,
-        template_name=TEMPLATE_PATH.name,
+        template_name=template_name,
         template_version=template_version,
     )
     report = generation_report(request, result)

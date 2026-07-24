@@ -25,6 +25,15 @@ def generated_work_job(
     payload["model"] = dict(payload.get("model") or {})
     payload["model"]["path"] = request.hrx_filename
 
+    # Keep the runner JSON consistent with the HRX patcher.  Until separate
+    # component mesh controls are exposed, BridgeDefinition.Nl is the global
+    # target used by both HiStrA bridge meshers.
+    nl = (payload.get("Geometry") or {}).get("BridgeDefinition", {}).get("Nl")
+    if nl is not None:
+        config = payload.setdefault("Config", {})
+        config["ArcoMesherQuadLengthMax"] = nl
+        config["WallMesherQuadLengthMax"] = nl
+
     model_points = [
         {
             "id": point.name,

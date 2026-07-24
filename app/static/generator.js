@@ -2,7 +2,7 @@ import { QuadViewer } from '/static/viewer-core.js';
 
 const $ = id => document.getElementById(id);
 const ui = Object.fromEntries([
-  'previewButton','downloadButton','jobJsonButton','bundleButton','jsonFile','templateBadge','jobId','schemaVersion','modelPath','scenarioId','jobMeshEnabled','jobMeshAnalysis','jobMeshTimeout','foundationInterfaceMaterials','scouredInterfaceMaterial','requireCompleted','requireDatabase','minimumResultsBytes','metadataEditor','spanCount','bridgeWidth','meshLength','backfillHeight','zLevel','slope','inclination','autoWidth','autoOrigins','lanes','addLane','laneWidthTotal','laneCount','spanSummary','pierSummary','abutments','sequence','materials','addMaterial','defaultTolerance','defaultEigenModes','defaultIterations','analyses','addAnalysis','maxLength','nodeTolerance','arcDivisions','arcMode','interfaceNrow','archMaxLength','wallMaxLength','jsonEditor','formToJson','jsonToForm','status','nodeCount','quadCount','pointCount','viewport','message','colorBy','edges','nodes','modelPointToggle','fitView','selectionTitle','selectionText','legend','extrude','thicknessScale','thicknessScaleOut','opacity','opacityOut'
+  'previewButton','downloadButton','jobJsonButton','bundleButton','jsonFile','hrxFile','templateBadge','jobId','schemaVersion','modelPath','scenarioId','jobMeshEnabled','jobMeshAnalysis','jobMeshTimeout','foundationInterfaceMaterials','scouredInterfaceMaterial','requireCompleted','requireDatabase','minimumResultsBytes','metadataEditor','spanCount','bridgeWidth','meshLength','backfillHeight','backfillHeight2','backfillHeight3','zLevel','slope','inclination','autoWidth','autoOrigins','lanes','addLane','laneWidthTotal','laneCount','spanSummary','pierSummary','abutments','sequence','materials','addMaterial','defaultTolerance','defaultEigenModes','defaultIterations','analyses','addAnalysis','maxLength','nodeTolerance','arcDivisions','arcMode','interfaceNrow','archMaxLength','wallMaxLength','jsonEditor','formToJson','jsonToForm','status','nodeCount','quadCount','pointCount','viewport','message','colorBy','edges','nodes','modelPointToggle','fitView','selectionTitle','selectionText','legend','extrude','thicknessScale','thicknessScaleOut','opacity','opacityOut'
 ].map(id => [id, $(id)]));
 
 const viewer = new QuadViewer(ui.viewport, {
@@ -161,7 +161,10 @@ function syncStaticFieldsToState() {
   definition.Zlevel = numberValue(ui.zLevel, definition.Zlevel);
   definition.Slope = numberValue(ui.slope, definition.Slope);
   definition.InclinationAngle = numberValue(ui.inclination, definition.InclinationAngle);
-  state.Geometry.Elevations.Elevations[0].H1 = numberValue(ui.backfillHeight, state.Geometry.Elevations.Elevations[0].H1);
+  const elevation = state.Geometry.Elevations.Elevations[0];
+  elevation.H1 = numberValue(ui.backfillHeight, elevation.H1);
+  elevation.H2 = numberValue(ui.backfillHeight2, elevation.H2 ?? 0);
+  elevation.H3 = numberValue(ui.backfillHeight3, elevation.H3 ?? 0);
   const defaults = state.AnalysisParameters.Defaults;
   setOptional(defaults, 'ConvergenceTolerance', numberValue(ui.defaultTolerance));
   setOptional(defaults, 'NumberOfEigenModes', numberValue(ui.defaultEigenModes));
@@ -209,6 +212,8 @@ function renderStaticFields() {
   setInput(ui.bridgeWidth, definition.Width);
   setInput(ui.meshLength, definition.Nl);
   setInput(ui.backfillHeight, state.Geometry.Elevations.Elevations[0]?.H1);
+  setInput(ui.backfillHeight2, state.Geometry.Elevations.Elevations[0]?.H2 ?? 0);
+  setInput(ui.backfillHeight3, state.Geometry.Elevations.Elevations[0]?.H3 ?? 0);
   setInput(ui.zLevel, definition.Zlevel);
   setInput(ui.slope, definition.Slope);
   setInput(ui.inclination, definition.InclinationAngle);
@@ -231,9 +236,10 @@ function renderLanes() {
   state.Geometry.Lanes.forEach((lane, index) => {
     const row = document.createElement('div');
     row.className = 'lane-row card';
-    row.innerHTML = `<div class="field name"><label>Name</label><input class="lane-name" type="text" value="${escapeHtml(lane.Name)}"></div><div class="field"><label>Width</label><input class="lane-width" type="number" min="0.0001" step="1" value="${lane.Width}"></div><div class="field"><label>Material</label>${materialSelectHtml(lane.MaterialKey,'lane-material')}</div><button class="danger remove-lane" title="Remove lane">×</button>`;
+    row.innerHTML = `<div class="field name"><label>Name</label><input class="lane-name" type="text" value="${escapeHtml(lane.Name)}"></div><div class="field"><label>Width</label><input class="lane-width" type="number" min="0.0001" step="1" value="${lane.Width}"></div><div class="field"><label>Wall height</label><input class="lane-height" type="number" min="0" step="1" value="${lane.Height ?? 0}"></div><div class="field"><label>Material</label>${materialSelectHtml(lane.MaterialKey,'lane-material')}</div><button class="danger remove-lane" title="Remove lane">×</button>`;
     row.querySelector('.lane-name').addEventListener('input', event => { lane.Name = event.target.value; schedulePreview(); });
     row.querySelector('.lane-width').addEventListener('input', event => { lane.Width = Number(event.target.value) || 0; applyAutomaticDimensions(); updateGeometrySummaryOnly(); schedulePreview(); });
+    row.querySelector('.lane-height').addEventListener('input', event => { lane.Height = Number(event.target.value) || 0; schedulePreview(); });
     row.querySelector('.lane-material').addEventListener('change', event => { lane.MaterialKey = event.target.value; schedulePreview(); });
     row.querySelector('.remove-lane').addEventListener('click', () => { if (state.Geometry.Lanes.length <= 1) return; state.Geometry.Lanes.splice(index,1); applyAutomaticDimensions(); renderGeometry(); schedulePreview(); });
     ui.lanes.append(row);
@@ -281,10 +287,12 @@ function renderSequence() {
       <div class="field"><label>Top thickness Tt</label><input data-key="Tt" type="number" min="0.001" step="1" value="${span.Tt ?? ''}"></div>
       <div class="field"><label>Arch material</label>${materialSelectHtml(span.MaterialKey ?? '18','span-material')}</div>
       <div class="field"><label>Pier-cap material</label>${materialSelectHtml(span.MaterialPulvinoKey ?? '22','cap-material')}</div>
+      <div class="field"><label>Geometry mode</label><select class="span-circular"><option value="true" ${String(span.Circolare ?? true)==='true'?'selected':''}>Circular L/f</option><option value="false" ${String(span.Circolare)==='false'?'selected':''}>HiStrA non-circular flag</option></select></div>
     </div>`;
     spanCard.querySelectorAll('input[data-key]').forEach(input => input.addEventListener('input', event => { span[event.target.dataset.key] = Number(event.target.value)||0; applyAutomaticDimensions(); schedulePreview(); }));
     spanCard.querySelector('.span-material').addEventListener('change', event => { span.MaterialKey = event.target.value; schedulePreview(); });
     spanCard.querySelector('.cap-material').addEventListener('change', event => { span.MaterialPulvinoKey = event.target.value; schedulePreview(); });
+    spanCard.querySelector('.span-circular').addEventListener('change', event => { span.Circolare = event.target.value === 'true'; schedulePreview(); });
     ui.sequence.append(spanCard);
 
     const pier = state.Geometry.Piers[index];
@@ -295,11 +303,16 @@ function renderSequence() {
       <div class="field"><label>Height H</label><input data-key="H" type="number" step="1" value="${pier.H ?? ''}"></div>
       <div class="field"><label>Longitudinal width b2</label><input data-key="b2" type="number" step="1" value="${pier.b2 ?? ''}"></div>
       <div class="field"><label>Transverse thickness w2</label><input data-key="w2" type="number" step="1" value="${pier.w2 ?? ''}"></div>
+      <div class="field"><label>Longitudinal left variation b1</label><input data-key="b1" type="number" min="0" step="1" value="${pier.b1 ?? 0}"></div>
+      <div class="field"><label>Longitudinal right variation b3</label><input data-key="b3" type="number" min="0" step="1" value="${pier.b3 ?? 0}"></div>
+      <div class="field"><label>Transverse +Y variation w1</label><input data-key="w1" type="number" min="0" step="1" value="${pier.w1 ?? 0}"></div>
+      <div class="field"><label>Transverse −Y variation w3</label><input data-key="w3" type="number" min="0" step="1" value="${pier.w3 ?? 0}"></div>
+      <div class="field"><label>Vertical alignment</label><select class="pier-alignment"><option value="Top" ${String(pier.VerticalAllignment ?? 'Top')==='Top'?'selected':''}>Top</option><option value="Center" ${String(pier.VerticalAllignment)==='Center'?'selected':''}>Center</option><option value="Bottom" ${String(pier.VerticalAllignment)==='Bottom'?'selected':''}>Bottom</option></select></div>
       <div class="field"><label>Foundation height Hf</label><input data-key="Hf" type="number" step="1" value="${pier.Hf ?? ''}"></div>
       <div class="field"><label>Foundation left B1f</label><input data-key="B1f" type="number" step="1" value="${pier.B1f ?? ''}"></div>
       <div class="field"><label>Foundation right B3f</label><input data-key="B3f" type="number" step="1" value="${pier.B3f ?? ''}"></div>
-      <div class="field"><label>Foundation Y− W1f</label><input data-key="W1f" type="number" step="1" value="${pier.W1f ?? ''}"></div>
-      <div class="field"><label>Foundation Y+ W3f</label><input data-key="W3f" type="number" step="1" value="${pier.W3f ?? ''}"></div>
+      <div class="field"><label>Foundation +Y W1f</label><input data-key="W1f" type="number" step="1" value="${pier.W1f ?? ''}"></div>
+      <div class="field"><label>Foundation −Y W3f</label><input data-key="W3f" type="number" step="1" value="${pier.W3f ?? ''}"></div>
       <div class="field"><label>Pier material</label>${materialSelectHtml(pier.MaterialKey ?? '152','pier-material')}</div>
       <div class="field"><label>Foundation material</label>${materialSelectHtml(pier.MaterialFoundationKey ?? '141','foundation-material')}</div>
       <div class="field"><label>Origin X</label><input class="pier-origin" type="number" value="${pier.Origin?.[0] ?? ''}" ${ui.autoOrigins.checked?'readonly':''}></div>
@@ -308,6 +321,7 @@ function renderSequence() {
     pierCard.querySelectorAll('input[data-key]').forEach(input => input.addEventListener('input', event => { pier[event.target.dataset.key] = Number(event.target.value)||0; applyAutomaticDimensions(); if (ui.autoOrigins.checked && event.target.dataset.key==='b2') renderGeometry(); schedulePreview(); }));
     pierCard.querySelector('.pier-material').addEventListener('change', event => { pier.MaterialKey = event.target.value; schedulePreview(); });
     pierCard.querySelector('.foundation-material').addEventListener('change', event => { pier.MaterialFoundationKey = event.target.value; schedulePreview(); });
+    pierCard.querySelector('.pier-alignment').addEventListener('change', event => { pier.VerticalAllignment = event.target.value; schedulePreview(); });
     pierCard.querySelector('.pier-origin').addEventListener('input', event => { pier.Origin = [Number(event.target.value)||0,0,0]; schedulePreview(); });
     ui.sequence.append(pierCard);
   });
@@ -414,6 +428,36 @@ async function api(path, body) {
   return response;
 }
 
+async function apiUpload(path, file) {
+  const form = new FormData();
+  form.append('file', file, file.name);
+  const response = await fetch(path,{ method:'POST', body:form });
+  if (!response.ok) {
+    let payload;
+    try { payload = await response.json(); } catch { payload = { detail: await response.text() }; }
+    const detail = payload.detail;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail ?? payload,null,2));
+  }
+  return response;
+}
+
+function loadRequestState(payload, sourceName) {
+  state = ensureStateShape(payload);
+  const imported = Boolean(state.model?.imported);
+  ui.autoWidth.checked = !imported;
+  ui.autoOrigins.checked = !imported;
+  if (!imported) applyAutomaticDimensions();
+  renderAll();
+  previewData = null;
+  ui.downloadButton.disabled = true;
+  ui.jobJsonButton.disabled = true;
+  ui.bundleButton.disabled = true;
+  showMessage(imported
+    ? 'The imported HiStrA geometry will be preserved until a geometry or mesh field is edited.'
+    : 'Generate a server preview to inspect the imported request.');
+  setStatus(`Loaded ${sourceName}.`,'good');
+}
+
 async function generatePreview({ automatic = false } = {}) {
   if (!state) return;
   try {
@@ -502,7 +546,7 @@ function bindStaticEvents() {
   for (const control of [ui.jobId,ui.modelPath,ui.scenarioId,ui.jobMeshEnabled,ui.jobMeshAnalysis,ui.jobMeshTimeout,ui.foundationInterfaceMaterials,ui.scouredInterfaceMaterial,ui.requireCompleted,ui.requireDatabase,ui.minimumResultsBytes,ui.metadataEditor,ui.bridgeWidth,ui.meshLength,ui.backfillHeight,ui.zLevel,ui.slope,ui.inclination,ui.defaultTolerance,ui.defaultEigenModes,ui.defaultIterations,ui.maxLength,ui.nodeTolerance,ui.arcDivisions,ui.arcMode,ui.interfaceNrow,ui.archMaxLength,ui.wallMaxLength]) control.addEventListener('change',schedulePreview);
   ui.autoWidth.addEventListener('change',()=>{applyAutomaticDimensions();renderGeometry();schedulePreview()});
   ui.autoOrigins.addEventListener('change',()=>{applyAutomaticDimensions();renderGeometry();schedulePreview()});
-  ui.addLane.addEventListener('click',()=>{state.Geometry.Lanes.push({Name:`Lane_${state.Geometry.Lanes.length+1}`,Width:100,MaterialKey:'19'});applyAutomaticDimensions();renderGeometry();schedulePreview()});
+  ui.addLane.addEventListener('click',()=>{state.Geometry.Lanes.push({Name:`Lane_${state.Geometry.Lanes.length+1}`,Width:100,Height:0,MaterialKey:'19'});applyAutomaticDimensions();renderGeometry();schedulePreview()});
   ui.addMaterial.addEventListener('click',()=>{
     const used = new Set(state.Materials.map(item=>String(item.Key)));
     const item = materialCatalog().find(entry=>!used.has(entry.key)) ?? materialCatalog()[0];
@@ -512,7 +556,21 @@ function bindStaticEvents() {
   ui.addAnalysis.addEventListener('click',()=>{let index=1,name=`Analysis_${index}`;while(state.analyses.some(item=>item.name===name))name=`Analysis_${++index}`;state.analyses.push({name,timeout_seconds:50,interfaces:{},outputs:{}});renderAnalyses();schedulePreview()});
   ui.formToJson.addEventListener('click',refreshJsonEditor);
   ui.jsonToForm.addEventListener('click',()=>{try{state=ensureStateShape(JSON.parse(ui.jsonEditor.value));applyAutomaticDimensions();renderAll();setStatus('Advanced JSON applied to the form.','good');schedulePreview()}catch(error){setStatus(error.message,'bad')}});
-  ui.jsonFile.addEventListener('change',async()=>{const file=ui.jsonFile.files?.[0];if(!file)return;try{state=ensureStateShape(JSON.parse(await file.text()));applyAutomaticDimensions();renderAll();previewData=null;ui.downloadButton.disabled=true;ui.jobJsonButton.disabled=true;ui.bundleButton.disabled=true;showMessage('Generate a server preview to inspect the imported request.');setStatus(`Loaded ${file.name}.`,'good')}catch(error){setStatus(error.message,'bad')}});
+  ui.jsonFile.addEventListener('change',async()=>{const file=ui.jsonFile.files?.[0];if(!file)return;try{loadRequestState(JSON.parse(await file.text()),file.name)}catch(error){setStatus(error.message,'bad')}});
+  ui.hrxFile.addEventListener('change',async()=>{
+    const file=ui.hrxFile.files?.[0];
+    if(!file)return;
+    try {
+      setStatus(`Importing ${file.name} and extracting WizardData…`);
+      const response=await apiUpload('/api/jobs/import',file);
+      loadRequestState(await response.json(),file.name);
+      await generatePreview();
+    } catch(error) {
+      setStatus(error instanceof Error?error.message:String(error),'bad');
+    } finally {
+      ui.hrxFile.value='';
+    }
+  });
   document.querySelectorAll('[data-tab]').forEach(button=>button.addEventListener('click',()=>{
     document.querySelectorAll('[data-tab]').forEach(item=>item.classList.toggle('active',item===button));
     document.querySelectorAll('.tab-panel').forEach(panel=>panel.classList.toggle('active',panel.id===`tab-${button.dataset.tab}`));

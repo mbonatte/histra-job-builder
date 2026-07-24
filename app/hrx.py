@@ -7,9 +7,9 @@ from typing import Any, Iterable, Sequence
 
 from lxml import etree
 
-from .analyses import rebuild_analyses
+from .analyses import rebuild_analyses, summarize_existing_analyses
 from .mesh import Mesh, Node, Quad
-from .model_points import ModelPointSelection, make_model_point, select_model_points
+from .model_points import ModelPointSelection, existing_model_points, make_model_point, select_model_points
 from .schemas import GenerationRequest, ValidationReport
 from .xml_utils import (
     EPS,
@@ -720,6 +720,52 @@ class HrxBuildResult:
 
 
 class HrxBuilder:
+    def preserve_existing(
+        self,
+        tree: etree._ElementTree,
+        mesh: Mesh,
+        request: GenerationRequest,
+        *,
+        preserve_analyses: bool = True,
+        preserve_model_points: bool = True,
+        preservation_reason: str = "WizardData and mesh controls are unchanged",
+    ) -> HrxBuildResult:
+        """Serialize a patched template while retaining its generated geometry.
+
+        Imported HiStrA models can contain meshing features not yet reconstructed
+        by the Python mesher.  When WizardData is unchanged we preserve those
+        nodes/quads/restraints exactly and only mutate requested non-geometric
+        sections.
+        """
+
+        root = tree.getroot()
+        selections = existing_model_points(tree) if preserve_model_points else select_model_points(tree, mesh)
+        analyses = summarize_existing_analyses(root) if preserve_analyses else rebuild_analyses(root, request, selections)
+        validation = validate_document(tree, None)
+        validation.warnings.append(f"Imported geometry was preserved because {preservation_reason}")
+        xml = serialize(tree)
+        reparsed = etree.ElementTree(etree.fromstring(xml, etree.XMLParser(huge_tree=True)))
+        final_validation = validate_document(reparsed, None)
+        final_validation.warnings.extend(validation.warnings)
+        return HrxBuildResult(
+            xml=xml,
+            validation=final_validation,
+            model_points=selections,
+            analyses=analyses,
+            removed_counts={"modelPoints": 0, "loadElements": 0, "surfaceRestraints": 0},
+        )
+
+    def source_exact(self, tree: etree._ElementTree, source_bytes: bytes) -> HrxBuildResult:
+        validation = validate_document(tree, None)
+        validation.warnings.append("Source HRX returned byte-for-byte because the imported job was unchanged")
+        return HrxBuildResult(
+            xml=source_bytes,
+            validation=validation,
+            model_points=existing_model_points(tree),
+            analyses=summarize_existing_analyses(tree.getroot()),
+            removed_counts={"modelPoints": 0, "loadElements": 0, "surfaceRestraints": 0},
+        )
+
     def build(self, tree: etree._ElementTree, mesh: Mesh, request: GenerationRequest) -> HrxBuildResult:
         root = tree.getroot()
         if root.get("WizardType") != "RailBridge":

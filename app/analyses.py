@@ -106,3 +106,22 @@ def rebuild_analyses(
             }
         )
     return generated
+
+
+def summarize_existing_analyses(root: etree._Element) -> list[dict[str, Any]]:
+    return [
+        {
+            "key": int(analysis.get("Key", str(index))),
+            "name": analysis.get("Name", f"Analysis_{index}"),
+            "sourceArchetype": analysis.get("Name"),
+            "analysisType": analysis.get("AnalysisType"),
+            "convergenceTolerance": analysis.get("ConvergenceTolerance"),
+            "numberOfEigenModes": analysis.get("NumberOfEigenModes"),
+            "state": "Preserved",
+            "scenario": {},
+            "scenarioEncodedInHrx": False,
+            "timeoutSeconds": None,
+            "outputs": {},
+        }
+        for index, analysis in enumerate(direct_children(root, "Analysis"), start=1)
+    ]
