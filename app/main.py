@@ -10,8 +10,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .import_hrx import imported_job_payload
-from .roundtrip import compare_hrx
+from .contracts import BUILDER_VERSION, job_sha256
+from .lossless_import import import_losslessly
 from .schemas import GenerationRequest
 from .service import GeneratorService
 from .template import TemplateRepository
@@ -21,7 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent
 TEMPLATE_PATH = BASE_DIR / "templates" / "model.hrx"
 STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="HiStrA HRX Work-Job Generator", version="0.5.0")
+app = FastAPI(title="HiStrA HRX Work-Job Generator", version=BUILDER_VERSION)
 service = GeneratorService(TEMPLATE_PATH)
 
 
@@ -110,15 +110,15 @@ async def import_hrx_job(file: UploadFile = File(...), job_id: str | None = Form
     if not data:
         raise HTTPException(status_code=422, detail="The uploaded HRX file is empty")
     try:
-        payload = imported_job_payload(
+        imported = import_losslessly(
             data,
             file.filename or "imported-model.hrx",
-            registry=service.registry,
+            compiler=service,
             job_id=job_id,
         )
     except (ValueError, KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return JSONResponse(content=payload)
+    return JSONResponse(content=imported.job)
 
 
 @app.post("/api/jobs/roundtrip/validate")
@@ -127,21 +127,18 @@ async def validate_hrx_roundtrip(file: UploadFile = File(...), job_id: str | Non
     if not source:
         raise HTTPException(status_code=422, detail="The uploaded HRX file is empty")
     try:
-        payload = imported_job_payload(
+        imported = import_losslessly(
             source,
             file.filename or "imported-model.hrx",
-            registry=service.registry,
+            compiler=service,
             job_id=job_id,
         )
-        request = GenerationRequest.model_validate(payload)
-        result = _generate_validated(request)
-        comparison = compare_hrx(source, result.xml)
     except (ValueError, KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
-        "job": payload,
-        "roundtrip": comparison,
-        "hrx_validation": result.validation.model_dump(),
+        "job": imported.job,
+        "roundtrip": imported.comparison,
+        "hrx_validation": imported.validation,
     }
 
 
@@ -161,11 +158,14 @@ def preview_job(request: GenerationRequest):
 @app.post("/api/jobs/generate/hrx")
 def generate_job_hrx(request: GenerationRequest):
     result = _generate_validated(request)
+    payload = request.model_dump(by_alias=True, exclude_none=True)
     headers = {
         **_download_headers(request.hrx_filename),
         "X-HRX-Validation": "valid",
         "X-HRX-Counts": json.dumps(result.validation.counts, separators=(",", ":")),
         "X-Job-Id": request.job_id,
+        "X-Job-SHA256": job_sha256(payload),
+        "X-Builder-Version": BUILDER_VERSION,
     }
     return Response(content=result.xml, media_type="application/xml", headers=headers)
 
