@@ -193,15 +193,42 @@ def make_quad(archetype: etree._Element | None, quad: Quad, points: list[list[fl
 
 def component_id_for_quad(quad: Quad) -> str | None:
     group = quad.group
-    if group.startswith("left-abutment-"):
+    # Only structural support bodies may carry ground restraints. Fill and cap
+    # quads can extend to lower elevations in some meshes but are not supports.
+    if group == "left-abutment-body":
         return "left-abutment"
-    if group.startswith("right-abutment-"):
+    if group == "right-abutment-body":
         return "right-abutment"
     if group.startswith("pier-") and group.endswith(("-shaft", "-foundation")):
         parts = group.split("-")
         return f"pier-{parts[1]}"
     return None
 
+def support_bearing_quad_keys(mesh: Mesh) -> set[int]:
+    """Return quads whose bottom edges are allowed to receive restraints.
+
+    A pier foundation, when present, is the sole support-bearing component for
+    that pier. The shaft is used only as a fallback for piers with Hf == 0 and
+    therefore no generated foundation quads.
+    """
+    pier_components_with_foundations = {
+        component
+        for quad in mesh.quads
+        if quad.group.startswith("pier-") and quad.group.endswith("-foundation")
+        if (component := component_id_for_quad(quad)) is not None
+    }
+
+    result: set[int] = set()
+    for quad in mesh.quads:
+        component = component_id_for_quad(quad)
+        if component is None:
+            continue
+        if component.startswith("pier-"):
+            required_suffix = "-foundation" if component in pier_components_with_foundations else "-shaft"
+            if not quad.group.endswith(required_suffix):
+                continue
+        result.add(quad.key)
+    return result
 
 @dataclass
 class FoundationSegment:
@@ -261,12 +288,18 @@ class RestraintTopology:
 
 def collect_foundation_segments(mesh: Mesh) -> list[tuple[str, list[FoundationSegment], float]]:
     nodes = {node.key: node for node in mesh.nodes}
+    bearing_quad_keys = support_bearing_quad_keys(mesh)
     groups: dict[tuple[str, str], list[Quad]] = {}
     for quad in mesh.quads:
+        if quad.key not in bearing_quad_keys:
+            continue
         component = component_id_for_quad(quad)
         if component is None:
             continue
-        band = f"{quad.transverse_band_index}|{fmt(quad.thickness)}"
+        # Include the transverse coordinate so distinct bands cannot be merged
+        # merely because they share an index and thickness.
+        y = nodes[quad.node_keys[0]].point[1]
+        band = f"{quad.transverse_band_index}|{fmt(quad.thickness)}|{fmt(y)}"
         groups.setdefault((component, band), []).append(quad)
     result: list[tuple[str, list[FoundationSegment], float]] = []
     for (component, _band), quads in groups.items():
@@ -613,6 +646,8 @@ def validate_document(tree: etree._ElementTree, mesh: Mesh | None = None) -> Val
         if any(key not in quad_keys for key in list_values(bridge, "QuadSpanKeys")):
             errors.append("Bridge/QuadSpanKeys contains invalid keys")
 
+    mesh_quad_by_key = {quad.key: quad for quad in mesh.quads} if mesh is not None else {}
+    allowed_restraint_quads = support_bearing_quad_keys(mesh) if mesh is not None else set()
     for restraint in restraints:
         key = restraint.get("Key")
         for name in ("NodeKey1", "NodeKey2"):
@@ -635,6 +670,12 @@ def validate_document(tree: etree._ElementTree, mesh: Mesh | None = None) -> Val
             quad_key = -1
         if quad_key not in quad_keys:
             errors.append(f"Restraint {key} references missing quad {quad_key}")
+        elif mesh is not None and quad_key not in allowed_restraint_quads:
+            quad = mesh_quad_by_key.get(quad_key)
+            group = quad.group if quad is not None else "unknown"
+            errors.append(
+                f"Restraint {key} is attached to non-bearing quad {quad_key} ({group})"
+            )
         try:
             line_key = int(restraint.get("ParentKey", ""))
         except ValueError:
