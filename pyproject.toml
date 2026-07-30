@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "histra-job-builder"
+version = "1.0.0"
+description = "Deterministic JOB to HRX compiler for the HiStrA job platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "lxml>=5.0",
+  "pydantic>=2.8",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[project.scripts]
+histra-builder = "histra_builder.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/histra_builder"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["histra_builder"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90
