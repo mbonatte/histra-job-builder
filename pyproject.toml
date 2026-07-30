@@ -29,6 +29,7 @@ addopts = "-ra --strict-markers"
 [tool.coverage.run]
 branch = true
 source = ["histra_builder"]
+omit = ["src/histra_builder/cli.py"]
 
 [tool.coverage.report]
 show_missing = true
