@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<HiStrAProject version="1">
+  <Geometry>
+    <Span id="main" length="25.0" units="m" />
+  </Geometry>
+  <Materials>
+    <Material id="concrete"><YoungModulus>30000000000</YoungModulus></Material>
+    <Material id="steel"><YoungModulus>200000000000</YoungModulus></Material>
+  </Materials>
+  <Analyses><Analysis id="dead-load" type="static" /></Analyses>
+</HiStrAProject>
