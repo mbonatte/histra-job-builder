@@ -15,3 +15,13 @@ def test_import_then_compile_is_byte_exact(tmp_path, template_bytes):
     artifact = compile_job(job, registry)
     assert artifact.hrx_bytes == template_bytes
     assert job.workflow == {"analyses": ["static"]}
+
+
+def test_import_without_registry_records_digest(template_bytes):
+    job = job_from_hrx(
+        template_bytes,
+        job_id="detached-import",
+        template_id="external-template",
+    )
+    assert job.model.template.sha256
+    assert job.model.patches == []

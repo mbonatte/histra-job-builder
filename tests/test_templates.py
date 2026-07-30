@@ -28,3 +28,8 @@ def test_register_rejects_changed_content(tmp_path: Path):
     registry.register("base", b"<x/>")
     with pytest.raises(TemplateIntegrityError):
         registry.register("base", b"<y/>")
+
+
+def test_invalid_template_id_is_rejected(tmp_path: Path):
+    with pytest.raises(TemplateNotFoundError):
+        TemplateRegistry(tmp_path).path_for("../escape")

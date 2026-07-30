@@ -85,3 +85,42 @@ def test_invalid_fragment_is_rejected(registry, base_job):
     ]
     with pytest.raises(PatchError, match="invalid XML fragment"):
         compile_job(base_job, registry)
+
+
+def test_invalid_job_is_wrapped(registry):
+    from histra_builder.errors import InvalidJobError
+
+    with pytest.raises(InvalidJobError):
+        compile_job({"job_id": "incomplete"}, registry)
+
+
+def test_invalid_template_xml_is_rejected(tmp_path, base_job):
+    from histra_builder.canonical import sha256_hex
+    from histra_builder.errors import InvalidJobError
+    from histra_builder.templates import TemplateRegistry
+
+    registry = TemplateRegistry(tmp_path)
+    broken = b"<broken>"
+    registry.register("broken", broken)
+    base_job["model"]["template"] = {"id": "broken", "sha256": sha256_hex(broken)}
+    base_job["model"]["patches"] = [{"op": "set_text", "xpath": "/*", "value": "x"}]
+    with pytest.raises(InvalidJobError, match="not valid XML"):
+        compile_job(base_job, registry)
+
+
+def test_invalid_xpath_and_non_element_selection(registry, base_job):
+    base_job["model"]["patches"] = [{"op": "set_text", "xpath": "//*[", "value": "x"}]
+    with pytest.raises(PatchError, match="invalid XPath"):
+        compile_job(base_job, registry)
+
+    base_job["model"]["patches"] = [{"op": "set_text", "xpath": "//Span/@length", "value": "x"}]
+    with pytest.raises(PatchError, match="must select XML elements"):
+        compile_job(base_job, registry)
+
+
+def test_cannot_replace_root(registry, base_job):
+    base_job["model"]["patches"] = [
+        {"op": "replace_xml", "xpath": "/*", "xml": "<Replacement/>"}
+    ]
+    with pytest.raises(PatchError, match="document root"):
+        compile_job(base_job, registry)
