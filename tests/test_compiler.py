@@ -1,7 +1,7 @@
 from lxml import etree
 import pytest
 
-from histra_builder.compiler import compile_job
+from histra_builder.compiler import BUILDER_VERSION, compile_job
 from histra_builder.errors import PatchError
 
 
@@ -13,7 +13,7 @@ def test_no_patches_preserves_exact_template_bytes(registry, base_job, template_
     artifact = compile_job(base_job, registry)
     assert artifact.hrx_bytes == template_bytes
     assert artifact.provenance["template_id"] == "base"
-    assert artifact.provenance["builder_version"] == "1.0.0"
+    assert artifact.provenance["builder_version"] == BUILDER_VERSION == "1.1.0"
     assert artifact.provenance["hrx_sha256"] == artifact.hrx_sha256
 
 
@@ -66,9 +66,7 @@ def test_all_patch_operations(registry, base_job):
 
 
 def test_patch_requires_a_match(registry, base_job):
-    base_job["model"]["patches"] = [
-        {"op": "set_text", "xpath": "//Missing", "value": "x"}
-    ]
+    base_job["model"]["patches"] = [{"op": "set_text", "xpath": "//Missing", "value": "x"}]
     with pytest.raises(PatchError, match="matched no nodes"):
         compile_job(base_job, registry)
 
@@ -113,7 +111,9 @@ def test_invalid_xpath_and_non_element_selection(registry, base_job):
     with pytest.raises(PatchError, match="invalid XPath"):
         compile_job(base_job, registry)
 
-    base_job["model"]["patches"] = [{"op": "set_text", "xpath": "//Span/@length", "value": "x"}]
+    base_job["model"]["patches"] = [
+        {"op": "set_text", "xpath": "//Span/@length", "value": "x"}
+    ]
     with pytest.raises(PatchError, match="must select XML elements"):
         compile_job(base_job, registry)
 

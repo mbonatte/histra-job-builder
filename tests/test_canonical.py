@@ -15,6 +15,10 @@ def test_canonical_json_is_key_order_independent():
 def test_canonical_json_rejects_non_finite_numbers():
     with pytest.raises(ValueError):
         canonical_json_bytes({"bad": math.nan})
+    with pytest.raises(ValueError):
+        canonical_json_bytes({"bad": math.inf})
+    with pytest.raises(ValueError):
+        canonical_json_bytes({"bad": -math.inf})
 
 
 def test_sha256_known_value():

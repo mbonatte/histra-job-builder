@@ -22,7 +22,7 @@ from histra_builder.canonical import canonical_json_bytes, job_sha256, sha256_he
 
 
 def base_document(hrx_bytes, registry):
-    return job_from_hrx(hrx_bytes, job_id="base", template_id="base", registry=registry).model_dump(mode="json")
+    return job_from_hrx(hrx_bytes, job_id="base", template_id="railbridge-base", registry=registry).model_dump(mode="json")
 
 
 def test_canonical_helpers_are_stable():
