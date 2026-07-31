@@ -6,61 +6,81 @@ from pathlib import Path
 
 from .compiler import compile_job
 from .importer import job_from_hrx
+from .inspector import inspect_hrx, preview_job
+from .models import JobSpec
 from .templates import TemplateRegistry
+from .variants import generate_variants
 
 
-def _compile(args: argparse.Namespace) -> int:
-    job = json.loads(Path(args.job).read_text(encoding="utf-8"))
-    artifact = compile_job(job, TemplateRegistry(args.templates))
-    output = Path(args.output or artifact.output_path)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(artifact.hrx_bytes)
-    print(json.dumps(artifact.provenance, indent=2, sort_keys=True))
-    return 0
+def _json(path: str) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def _import(args: argparse.Namespace) -> int:
-    data = Path(args.hrx).read_bytes()
-    registry = TemplateRegistry(args.templates)
-    job = job_from_hrx(
-        data,
-        job_id=args.job_id,
-        template_id=args.template_id,
-        output_path=args.output_path,
-        registry=registry,
-    )
-    Path(args.job_output).write_text(
-        json.dumps(job.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    return 0
+def _write_json(path: Path | None, value: object) -> None:
+    text = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    if path is None:
+        print(text, end="")
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def main() -> None:
     parser = argparse.ArgumentParser(prog="histra-builder")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    compile_parser = sub.add_parser("compile", help="compile a JOB into an HRX")
-    compile_parser.add_argument("job")
-    compile_parser.add_argument("--templates", required=True)
-    compile_parser.add_argument("--output")
-    compile_parser.set_defaults(func=_compile)
+    compile_p = sub.add_parser("compile")
+    compile_p.add_argument("job")
+    compile_p.add_argument("--registry", required=True)
+    compile_p.add_argument("--output")
 
-    import_parser = sub.add_parser("import", help="create a lossless JOB from an HRX")
-    import_parser.add_argument("hrx")
-    import_parser.add_argument("--templates", required=True)
-    import_parser.add_argument("--job-id", required=True)
-    import_parser.add_argument("--template-id", required=True)
-    import_parser.add_argument("--output-path", default="model.hrx")
-    import_parser.add_argument("--job-output", required=True)
-    import_parser.set_defaults(func=_import)
-    return parser
+    import_p = sub.add_parser("import")
+    import_p.add_argument("hrx")
+    import_p.add_argument("--job-id", required=True)
+    import_p.add_argument("--template-id", required=True)
+    import_p.add_argument("--registry", required=True)
+    import_p.add_argument("--output")
 
+    inspect_p = sub.add_parser("inspect")
+    inspect_p.add_argument("hrx")
+    inspect_p.add_argument("--without-geometry", action="store_true")
+    inspect_p.add_argument("--output")
 
-def main() -> int:
-    args = build_parser().parse_args()
-    return args.func(args)
+    preview_p = sub.add_parser("preview-job")
+    preview_p.add_argument("job")
+    preview_p.add_argument("--registry", required=True)
+    preview_p.add_argument("--output")
+
+    variants_p = sub.add_parser("variants")
+    variants_p.add_argument("job")
+    variants_p.add_argument("variants")
+    variants_p.add_argument("--output-dir", required=True)
+
+    args = parser.parse_args()
+    if args.command == "compile":
+        artifact = compile_job(_json(args.job), TemplateRegistry(args.registry))
+        output = Path(args.output or artifact.output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(artifact.hrx_bytes)
+        print(json.dumps(artifact.provenance, indent=2))
+    elif args.command == "import":
+        job = job_from_hrx(
+            Path(args.hrx).read_bytes(), job_id=args.job_id, template_id=args.template_id,
+            registry=TemplateRegistry(args.registry),
+        )
+        _write_json(Path(args.output) if args.output else None, job.model_dump(mode="json"))
+    elif args.command == "inspect":
+        value = inspect_hrx(Path(args.hrx).read_bytes()).as_dict(include_geometry=not args.without_geometry)
+        _write_json(Path(args.output) if args.output else None, value)
+    elif args.command == "preview-job":
+        value = preview_job(_json(args.job), TemplateRegistry(args.registry))
+        _write_json(Path(args.output) if args.output else None, value)
+    elif args.command == "variants":
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for job in generate_variants(_json(args.job), _json(args.variants)):
+            _write_json(output_dir / f"{job.job_id}.json", job.model_dump(mode="json"))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

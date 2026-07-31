@@ -18,9 +18,12 @@ class TemplateAsset:
     data: bytes
     sha256: str
 
+    def as_dict(self) -> dict[str, object]:
+        return {"id": self.template_id, "sha256": self.sha256, "size_bytes": len(self.data)}
+
 
 class TemplateRegistry:
-    """Read-only, filesystem-backed registry of immutable source HRX assets."""
+    """Filesystem-backed registry of immutable source HRX assets."""
 
     def __init__(self, root: str | os.PathLike[str]):
         self.root = Path(root).resolve()
@@ -39,13 +42,13 @@ class TemplateRegistry:
         digest = sha256_hex(data)
         if digest != expected_sha256:
             raise TemplateIntegrityError(
-                f"template {template_id!r} digest mismatch: expected "
-                f"{expected_sha256}, got {digest}"
+                f"template {template_id!r} digest mismatch: expected {expected_sha256}, got {digest}"
             )
         return TemplateAsset(template_id, path, data, digest)
 
     def register(self, template_id: str, data: bytes, *, overwrite: bool = False) -> TemplateAsset:
-        """Authoring helper. Runtime deployments should mount the registry read-only."""
+        if not data:
+            raise TemplateIntegrityError("cannot register an empty HRX template")
         path = self.path_for(template_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         flags = "wb" if overwrite else "xb"
@@ -60,3 +63,12 @@ class TemplateRegistry:
                 )
         final = path.read_bytes()
         return TemplateAsset(template_id, path, final, sha256_hex(final))
+
+    def list(self) -> list[TemplateAsset]:
+        if not self.root.exists():
+            return []
+        assets: list[TemplateAsset] = []
+        for path in sorted(self.root.glob("*.hrx"), key=lambda item: item.name.lower()):
+            data = path.read_bytes()
+            assets.append(TemplateAsset(path.stem, path, data, sha256_hex(data)))
+        return assets

@@ -11,7 +11,7 @@ from .errors import InvalidJobError, PatchError
 from .models import JobSpec, PatchOperation
 from .templates import TemplateRegistry
 
-BUILDER_VERSION = "1.0.0"
+BUILDER_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
@@ -22,18 +22,21 @@ class BuildArtifact:
 
     @property
     def hrx_sha256(self) -> str:
-        return self.provenance["hrx_sha256"]
+        return str(self.provenance["hrx_sha256"])
+
+
+def _secure_parser() -> etree.XMLParser:
+    return etree.XMLParser(resolve_entities=False, no_network=True, remove_blank_text=False, strip_cdata=False)
 
 
 def _parse_fragment(xml: str) -> etree._Element:
-    parser = etree.XMLParser(resolve_entities=False, no_network=True, remove_blank_text=False)
     try:
-        return etree.fromstring(xml.encode("utf-8"), parser=parser)
+        return etree.fromstring(xml.encode("utf-8"), parser=_secure_parser())
     except etree.XMLSyntaxError as exc:
         raise PatchError(f"invalid XML fragment: {exc}") from exc
 
 
-def _select(tree: etree._ElementTree, patch: PatchOperation) -> list[Any]:
+def _select(tree: etree._ElementTree, patch: PatchOperation) -> list[etree._Element]:
     try:
         nodes = tree.xpath(patch.xpath)
     except etree.XPathError as exc:
@@ -42,7 +45,7 @@ def _select(tree: etree._ElementTree, patch: PatchOperation) -> list[Any]:
         raise PatchError(f"XPath matched no nodes: {patch.xpath}")
     if not all(isinstance(node, etree._Element) for node in nodes):
         raise PatchError("patch XPath must select XML elements")
-    return nodes
+    return list(nodes)
 
 
 def _apply_patch(tree: etree._ElementTree, patch: PatchOperation) -> None:
@@ -51,20 +54,17 @@ def _apply_patch(tree: etree._ElementTree, patch: PatchOperation) -> None:
         assert patch.attribute is not None and patch.value is not None
         for node in nodes:
             node.set(patch.attribute, str(patch.value))
-        return
-    if patch.op == "set_text":
+    elif patch.op == "set_text":
         assert patch.value is not None
         for node in nodes:
             node.text = str(patch.value)
-        return
-    if patch.op == "delete":
+    elif patch.op == "delete":
         for node in nodes:
             parent = node.getparent()
             if parent is None:
                 raise PatchError("cannot delete the document root")
             parent.remove(node)
-        return
-    if patch.op == "replace_xml":
+    elif patch.op == "replace_xml":
         assert patch.xml is not None
         fragment = _parse_fragment(patch.xml)
         for node in nodes:
@@ -72,14 +72,13 @@ def _apply_patch(tree: etree._ElementTree, patch: PatchOperation) -> None:
             if parent is None:
                 raise PatchError("cannot replace the document root")
             parent.replace(node, deepcopy(fragment))
-        return
-    if patch.op == "append_xml":
+    elif patch.op == "append_xml":
         assert patch.xml is not None
         fragment = _parse_fragment(patch.xml)
         for node in nodes:
             node.append(deepcopy(fragment))
-        return
-    raise PatchError(f"unsupported patch operation: {patch.op}")
+    else:  # pragma: no cover - protected by model validation
+        raise PatchError(f"unsupported patch operation: {patch.op}")
 
 
 def compile_job(job: JobSpec | dict[str, Any], registry: TemplateRegistry) -> BuildArtifact:
@@ -88,38 +87,22 @@ def compile_job(job: JobSpec | dict[str, Any], registry: TemplateRegistry) -> Bu
         spec = job if isinstance(job, JobSpec) else JobSpec.model_validate(job)
     except Exception as exc:
         raise InvalidJobError(str(exc)) from exc
-
-    canonical_job = spec.model_dump(mode="json")
-    job_digest = job_sha256(canonical_job)
+    canonical = spec.model_dump(mode="json")
     asset = registry.load(spec.model.template.id, spec.model.template.sha256)
-
-    # An unmodified imported model round-trips byte-for-byte.
     if not spec.model.patches:
         output = asset.data
     else:
-        parser = etree.XMLParser(
-            resolve_entities=False,
-            no_network=True,
-            remove_blank_text=False,
-            strip_cdata=False,
-        )
         try:
-            root = etree.fromstring(asset.data, parser=parser)
+            root = etree.fromstring(asset.data, parser=_secure_parser())
         except etree.XMLSyntaxError as exc:
             raise InvalidJobError(f"template is not valid XML: {exc}") from exc
         tree = root.getroottree()
         for patch in spec.model.patches:
             _apply_patch(tree, patch)
-        output = etree.tostring(
-            tree,
-            encoding="utf-8",
-            xml_declaration=True,
-            pretty_print=False,
-        )
-
+        output = etree.tostring(tree, encoding="utf-8", xml_declaration=True, pretty_print=False)
     provenance = {
         "builder_version": BUILDER_VERSION,
-        "job_sha256": job_digest,
+        "job_sha256": job_sha256(canonical),
         "template_id": asset.template_id,
         "template_sha256": asset.sha256,
         "hrx_sha256": sha256_hex(output),

@@ -1,116 +1,48 @@
-# histra-job-builder
+# HiStrA Job Builder 1.1.0
 
-A deterministic compiler for the HiStrA distributed job platform.
+`histra-job-builder` is the engineering boundary between canonical JOB documents and the official HiStrA `.hrx` format.
 
-The Builder has one responsibility:
+## Capabilities
 
-```text
-canonical JOB + immutable source template -> generated HRX + provenance
-```
+- Lossless import of an existing HRX into an immutable template plus canonical JOB.
+- Deterministic compilation of canonical JOB patches back to HRX.
+- Structural preview extraction from the actual `Node`/`Quad` geometry stored in HRX.
+- HRX inventory and geometry validation for comparison with the official HiStrA software.
+- Explicit scenario variants using JSON Pointer changes, without silently mutating the base JOB.
+- CLI commands for import, compile, inspect, preview and variant generation.
 
-It does **not** own queues, runners, leases, HTTP endpoints, or result storage. The
-Server imports this package and invokes it in-process. Keeping it as a separate
-Python package gives the compiler an explicit API and an independently testable
-reproducibility boundary without adding another network service.
+The importer deliberately creates a no-patch JOB. Compiling that JOB returns the original HRX bytes exactly. Changes are represented as ordered XML patch operations, preserving provenance.
 
-## Contract
+## Install
 
-A JOB is JSON with four top-level fields:
-
-```json
-{
-  "schema_version": "1.0",
-  "job_id": "campaign-a-0001",
-  "model": {
-    "output_path": "models/campaign-a-0001.hrx",
-    "template": {
-      "id": "bridge-base-v1",
-      "sha256": "<64 lowercase hex characters>"
-    },
-    "patches": [
-      {
-        "op": "set_attribute",
-        "xpath": "//Span[@id='main']",
-        "attribute": "length",
-        "value": 27.5
-      }
-    ]
-  },
-  "workflow": {
-    "analyses": [{"id": "dead-load"}]
-  },
-  "metadata": {
-    "campaign": "parameter-study-1",
-    "seed": 182731
-  }
-}
-```
-
-`workflow` is delivered unchanged to the Runner. `metadata` is provenance and
-campaign information. The Builder only interprets `model`.
-
-## Template rule
-
-Generated HRX files are disposable. A source template is not. Imported models
-may contain information that cannot be represented safely as small JSON edits,
-so the deployment keeps one immutable, content-addressed source HRX and stores
-only its ID and SHA-256 in each JOB.
-
-The registry layout is deliberately simple:
-
-```text
-templates/
-  bridge-base-v1.hrx
-  arch-base-v3.hrx
-```
-
-The Server should mount this directory read-only. A digest mismatch is a hard
-build failure.
-
-## Patch operations
-
-Patches are ordered and deterministic:
-
-- `set_attribute`: set an XML attribute on every selected element.
-- `set_text`: replace text on every selected element.
-- `delete`: remove every selected element.
-- `replace_xml`: replace every selected element with the supplied fragment.
-- `append_xml`: append the supplied fragment to every selected element.
-
-An XPath that matches nothing is an error. XML external entities and network
-access are disabled. A JOB with no patches returns the template bytes exactly,
-which provides a lossless `HRX -> JOB -> HRX` import path.
-
-Domain-specific generators—mesh generation, geometry synthesis, randomized
-models—should be implemented as compiler plugins that produce these same
-stable artifacts. Their random seed and generator version belong in the JOB.
-
-## Python API
-
-```python
-from histra_builder import TemplateRegistry, compile_job
-
-artifact = compile_job(job, TemplateRegistry("./templates"))
-artifact.hrx_bytes
-artifact.provenance
+```bash
+python -m pip install -e .
 ```
 
 ## CLI
 
 ```bash
-histra-builder compile job.json --templates ./templates --output model.hrx
-histra-builder import source.hrx \
-  --templates ./templates \
-  --template-id source-v1 \
-  --job-id imported-001 \
-  --job-output job.json
+histra-builder import bridge.hrx --job-id bridge-base --template-id bridge-base --registry ./templates --output job.json
+histra-builder inspect bridge.hrx
+histra-builder preview-job job.json --registry ./templates --output preview.json
+histra-builder compile job.json --registry ./templates --output model.hrx
+histra-builder variants job.json variants.json --output-dir ./generated-jobs
 ```
 
-## Tests
+## Variant definition
 
-```bash
-python -m pip install -e '.[test]'
-pytest
+```json
+{
+  "variants": [
+    {
+      "job_id": "bridge-scour-050",
+      "changes": [
+        {"path": "/metadata/scour_normalized", "value": 0.5},
+        {"path": "/model/patches/0/value", "value": -0.05}
+      ]
+    }
+  ]
+}
 ```
 
-The coverage gate is 90% branch-aware coverage.
+Each generated document is validated as a canonical JOB before it is returned.

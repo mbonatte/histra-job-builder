@@ -1,18 +1,20 @@
 class BuilderError(Exception):
-    """Base exception raised by the builder."""
-
+    """Base class for expected builder errors."""
 
 class InvalidJobError(BuilderError):
-    """The JOB cannot be compiled."""
+    pass
 
-
-class TemplateNotFoundError(BuilderError):
-    """The requested immutable template does not exist."""
-
-
-class TemplateIntegrityError(BuilderError):
-    """The template content does not match its declared digest."""
-
+class InvalidHrxError(BuilderError):
+    pass
 
 class PatchError(BuilderError):
-    """An XML patch could not be applied unambiguously."""
+    pass
+
+class TemplateNotFoundError(BuilderError):
+    pass
+
+class TemplateIntegrityError(BuilderError):
+    pass
+
+class VariantError(BuilderError):
+    pass
