@@ -5,6 +5,7 @@ from .errors import (
     InvalidHrxError,
     InvalidJobError,
     PatchError,
+    ScenarioError,
     TemplateIntegrityError,
     TemplateNotFoundError,
     VariantError,
@@ -12,15 +13,16 @@ from .errors import (
 from .importer import job_from_hrx
 from .inspector import HrxInspection, inspect_hrx, preview_job
 from .models import JobSpec, ModelSpec, PatchOperation, TemplateRef
+from .scenarios import generate_random_jobs
 from .templates import TemplateAsset, TemplateRegistry
 from .variants import VariantDefinition, VariantSet, apply_variant, generate_variants
 
 __all__ = [
     "BUILDER_VERSION", "BuildArtifact", "BuilderError", "HrxInspection",
     "InvalidHrxError", "InvalidJobError", "JobSpec", "ModelSpec", "PatchError",
-    "PatchOperation", "TemplateAsset", "TemplateIntegrityError", "TemplateNotFoundError",
+    "PatchOperation", "ScenarioError", "TemplateAsset", "TemplateIntegrityError", "TemplateNotFoundError",
     "TemplateRef", "TemplateRegistry", "VariantDefinition", "VariantError", "VariantSet",
-    "apply_variant", "canonical_json_bytes", "compile_job", "generate_variants",
+    "apply_variant", "canonical_json_bytes", "compile_job", "generate_random_jobs", "generate_variants",
     "inspect_hrx", "job_from_hrx", "job_sha256", "preview_job", "sha256_hex",
 ]
 

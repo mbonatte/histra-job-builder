@@ -27,7 +27,31 @@ histra-builder inspect bridge.hrx
 histra-builder preview-job job.json --registry ./templates --output preview.json
 histra-builder compile job.json --registry ./templates --output model.hrx
 histra-builder variants job.json variants.json --output-dir ./generated-jobs
+histra-builder generate-random model.hrx --output-dir ./generated_jobs --count 5 --seed 20260817
 ```
+
+The same generator is available as `python -m histra_builder generate-random ...`.
+
+## Random scour workflow jobs
+
+`generate-random` imports a reference HRX (e.g. `model.hrx`), verifies the scour
+foundation exists and writes five reproducible scenario JOBs:
+
+```text
+generated_jobs/
+    random_001/job.json
+    ...
+    random_005/job.json
+    templates/model.hrx
+```
+
+Every JOB keeps the fixed analysis sequence `Vert` -> `Scour_1` -> `Scour_2` with
+semantic interface changes (`pier_1` scoured to absolute fractions 0.2 and 0.4,
+never resolved into concrete HRX interface IDs), plus a seeded randomisation of
+pier/foundation WizardData parameters (pier height, foundation height, plan
+sizes, subgrade modulus) applied as deterministic XML patches. Generation fails
+clearly when the model cannot be loaded, `pier_1` is missing, sampled parameters
+are invalid, or a JOB cannot compile or round-trip through JSON.
 
 ## Variant definition
 

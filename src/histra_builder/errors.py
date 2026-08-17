@@ -18,3 +18,6 @@ class TemplateIntegrityError(BuilderError):
 
 class VariantError(BuilderError):
     pass
+
+class ScenarioError(BuilderError):
+    pass

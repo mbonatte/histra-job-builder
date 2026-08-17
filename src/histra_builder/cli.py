@@ -8,6 +8,7 @@ from .compiler import compile_job
 from .importer import job_from_hrx
 from .inspector import inspect_hrx, preview_job
 from .models import JobSpec
+from .scenarios import DEFAULT_BASE_SEED, DEFAULT_JOB_COUNT, generate_random_jobs
 from .templates import TemplateRegistry
 from .variants import generate_variants
 
@@ -56,6 +57,12 @@ def main() -> None:
     variants_p.add_argument("variants")
     variants_p.add_argument("--output-dir", required=True)
 
+    random_p = sub.add_parser("generate-random")
+    random_p.add_argument("model")
+    random_p.add_argument("--output-dir", default="generated_jobs")
+    random_p.add_argument("--count", type=int, default=DEFAULT_JOB_COUNT)
+    random_p.add_argument("--seed", type=int, default=DEFAULT_BASE_SEED)
+
     args = parser.parse_args()
     if args.command == "compile":
         artifact = compile_job(_json(args.job), TemplateRegistry(args.registry))
@@ -80,6 +87,11 @@ def main() -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
         for job in generate_variants(_json(args.job), _json(args.variants)):
             _write_json(output_dir / f"{job.job_id}.json", job.model_dump(mode="json"))
+    elif args.command == "generate-random":
+        written = generate_random_jobs(
+            args.model, output_dir=args.output_dir, count=args.count, base_seed=args.seed
+        )
+        print(json.dumps({"generated": [str(item) for item in written]}, indent=2))
 
 
 if __name__ == "__main__":

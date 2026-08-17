@@ -8,3 +8,4 @@ build/
 dist/
 .venv/
 .env
+generated_jobs/

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add seeded random five-JOB scour workflow generation (`generate-random` CLI command and `histra_builder.scenarios`).
+- Keep scour semantics (`pier_1`, absolute fractions 0.2/0.4) in the canonical JOB workflow instead of concrete HRX interface IDs.
+- Add `ScenarioError` and `python -m histra_builder` entry point.
+
 ## 1.1.0 - 2026-07-31
 
 - Add secure HRX inventory and preview extraction from stored `Node` and `Quad` elements.
