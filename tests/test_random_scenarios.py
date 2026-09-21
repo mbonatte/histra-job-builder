@@ -136,11 +136,12 @@ def test_serialization_round_trip(generated: list[Path]) -> None:
 
 def test_compiled_hrx_round_trip(generated: list[Path], model_bytes: bytes) -> None:
     registry = TemplateRegistry(generated[0].parents[1] / "templates")
+    ref_inspection = inspect_hrx(model_bytes)
     for path in generated:
         job = JobSpec.model_validate(json.loads(path.read_text(encoding="utf-8")))
         artifact = compile_job(job, registry)
         compiled = inspect_hrx(artifact.hrx_bytes)
-        assert compiled.counts == {"nodes": 3216, "quads": 2520}
+        assert compiled.counts == ref_inspection.counts
         assert compiled.validation["valid"] is True
         root = etree.fromstring(artifact.hrx_bytes)
         selected = job.metadata["random_parameters"]

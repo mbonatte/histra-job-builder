@@ -13,7 +13,7 @@ def test_no_patches_preserves_exact_template_bytes(registry, base_job, template_
     artifact = compile_job(base_job, registry)
     assert artifact.hrx_bytes == template_bytes
     assert artifact.provenance["template_id"] == "base"
-    assert artifact.provenance["builder_version"] == BUILDER_VERSION == "1.1.0"
+    assert artifact.provenance["builder_version"] == BUILDER_VERSION == "1.2.0"
     assert artifact.provenance["hrx_sha256"] == artifact.hrx_sha256
 
 
