@@ -297,3 +297,86 @@ def test_vert_equilibrium_solve() -> None:
     res = sess.run("Vert")
     assert res.outcome.value == "completed"
     assert len(res.steps) == 20
+
+
+def test_conformal_topology_and_isolated_pier_solve() -> None:
+    from histra_builder.generator import generate_pier_hrx
+
+    # 1. Verify two-span bridge mesh has 0 T-junctions and authentic Pulvino
+    spec = BridgeSpec(
+        name="ConformalTwoSpanAudit",
+        width=200.0,
+        target_mesh_size=35.0,
+        spans=[
+            SpanSpec(length=400.0, rise=100.0, thickness_springer=35.0, thickness_crown=25.0),
+            SpanSpec(length=400.0, rise=100.0, thickness_springer=35.0, thickness_crown=25.0),
+        ],
+        piers=[PierSpec(height=200.0, thickness=60.0, foundation_height=60.0, foundation_length=100.0)],
+        left_abutment=AbutmentSpec(height=0.0, thickness=70.0, foundation_height=0.0),
+        right_abutment=AbutmentSpec(height=0.0, thickness=70.0, foundation_height=0.0),
+    )
+    mesh = build_bridge_mesh(spec)
+
+    # Check for Pier_Cap quads (Mat 22)
+    cap_quads = [q for q in mesh.quads.values() if q.material_key == 22]
+    assert len(cap_quads) >= 2  # Left and right Pulvino quads
+
+    # Strict point-on-segment geometric audit for T-junctions
+    all_nodes = {k: (pt.x, pt.y, pt.z) for k, pt in mesh.nodes.items()}
+    edges = set()
+    for q in mesh.quads.values():
+        n = q.node_keys
+        for i in range(4):
+            e = tuple(sorted([n[i], n[(i + 1) % 4]]))
+            edges.add(e)
+
+    def is_point_on_segment(px, pz, ax, az, bx, bz, tol=1e-3):
+        cross = abs((px - ax) * (bz - az) - (pz - az) * (bx - ax))
+        if cross > tol:
+            return False
+        dot = (px - ax) * (bx - ax) + (pz - az) * (bz - az)
+        if dot < tol:
+            return False
+        sq_len = (bx - ax) ** 2 + (bz - az) ** 2
+        if dot > sq_len - tol:
+            return False
+        return True
+
+    t_junctions = 0
+    for e in edges:
+        pA = all_nodes[e[0]]
+        pB = all_nodes[e[1]]
+        for n_k, pN in all_nodes.items():
+            if n_k == e[0] or n_k == e[1]:
+                continue
+            if abs(pN[1] - pA[1]) > 1e-3:
+                continue
+            if is_point_on_segment(pN[0], pN[2], pA[0], pA[2], pB[0], pB[2]):
+                t_junctions += 1
+
+    assert t_junctions == 0, f"Found {t_junctions} T-junctions in bridge mesh!"
+
+    # 2. Verify isolated pier model generation and full 20-step equilibrium solve
+    pier_spec = PierSpec(
+        height=200.0,
+        thickness=60.0,
+        cap_height=35.0,
+        foundation_height=60.0,
+        foundation_length=100.0,
+        foundation_width=200.0,
+        material_key=18,
+        cap_material_key=22,
+        foundation_material_key=141,
+    )
+    pier_hrx = generate_pier_hrx(pier_spec, width=200.0, target_mesh_size=35.0, include_cap=True)
+    with tempfile.NamedTemporaryFile(suffix=".hrx", mode="wb", delete=False) as tmp:
+        tmp.write(pier_hrx)
+        tmp_path = tmp.name
+
+    p_model = load_model(tmp_path)
+    prepare_model(p_model, force=True)
+    p_sess = AnalysisSession(p_model)
+    p_res = p_sess.run("Vert")
+    assert p_res.outcome.value == "completed"
+    assert len(p_res.steps) == 20
+
