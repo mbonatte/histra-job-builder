@@ -144,12 +144,13 @@ MASONRY_18: Dict[str, str] = {
     "Color": "#FF3300",
 }
 
-# Standard pier masonry template 22
+# Standard pier cap template 22
 PIER_CAP_22: Dict[str, str] = dict(MASONRY_18)
 PIER_CAP_22.update({
     "Key": "22",
     "Name": "Pier cap",
     "Gd": "41.7",
+    "Color": "#006700",
 })
 
 # Standard foundation masonry template 141
@@ -301,6 +302,22 @@ SOIL_146: Dict[str, str] = {
     "Color": "#FFDF3595",
 }
 
+# Standard backfill template 19
+BACKFILL_19: Dict[str, str] = dict(MASONRY_18)
+BACKFILL_19.update({
+    "Key": "19",
+    "Name": "Backfill",
+    "Gd": "2.08",
+    "Ehor": "5",
+    "Ever": "5",
+    "FmHor": "0.09",
+    "FmVer": "0.09",
+    "FtmHor": "0.0001",
+    "FtmVer": "0.0001",
+    "FrictionRatioShear": "1.427",
+    "Color": "#996633",
+})
+
 # Standard scoured soil material template 147 (degraded stiffness and strength)
 SOIL_REMOVED_147: Dict[str, str] = dict(SOIL_146)
 SOIL_REMOVED_147.update({
@@ -325,6 +342,7 @@ SOIL_REMOVED_147.update({
 
 DEFAULT_TEMPLATES = [
     MASONRY_18,
+    BACKFILL_19,
     PIER_CAP_22,
     FOUNDATION_141,
     SOIL_146,

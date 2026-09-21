@@ -5,6 +5,9 @@ from .bridge_builder import (
     build_bridge_mesh,
     generate_bridge_hrx,
     generate_bridge_hrx_file,
+    build_isolated_pier_mesh,
+    generate_pier_hrx,
+    generate_pier_hrx_file,
 )
 from .geometry import (
     Point3D,
@@ -14,7 +17,15 @@ from .geometry import (
     signed_area_xz,
 )
 from .hrx_writer import serialize_mesh_to_hrx
-from .materials import DEFAULT_TEMPLATES, MASONRY_18, PIER_CAP_22, FOUNDATION_141, SOIL_146, SOIL_REMOVED_147
+from .materials import (
+    DEFAULT_TEMPLATES,
+    MASONRY_18,
+    BACKFILL_19,
+    PIER_CAP_22,
+    FOUNDATION_141,
+    SOIL_146,
+    SOIL_REMOVED_147,
+)
 from .mesher import (
     BridgeMesher,
     GeneratedBridgeMesh,
@@ -42,6 +53,9 @@ __all__ = [
     "build_bridge_mesh",
     "generate_bridge_hrx",
     "generate_bridge_hrx_file",
+    "build_isolated_pier_mesh",
+    "generate_pier_hrx",
+    "generate_pier_hrx_file",
     "BridgeMesher",
     "GeneratedBridgeMesh",
     "GeneratedQuad",
@@ -57,6 +71,7 @@ __all__ = [
     "serialize_mesh_to_hrx",
     "DEFAULT_TEMPLATES",
     "MASONRY_18",
+    "BACKFILL_19",
     "PIER_CAP_22",
     "FOUNDATION_141",
     "SOIL_146",
