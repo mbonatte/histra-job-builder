@@ -15,18 +15,32 @@ def build_bridge_mesh(spec: BridgeSpec) -> GeneratedBridgeMesh:
     return mesher.mesh()
 
 
-def generate_bridge_hrx(spec: BridgeSpec, include_scour_analyses: bool = True) -> bytes:
-    """Generate byte-exact HRX XML bytes from a parametric BridgeSpec."""
+def generate_bridge_hrx(spec, include_scour_analyses: bool = True) -> bytes:
+    """Generate HRX bytes from a bridge spec.
+
+    ``CSharpBridgeSpec`` uses the exact C#-parity mesher/writer.  The legacy
+    ``BridgeSpec`` path remains available for the simplified generator while
+    the remaining C# fields are ported.
+    """
+    from .csharp_model import CSharpBridgeSpec
+    from .csharp_writer import generate_csharp_bridge_hrx
+
+    if isinstance(spec, CSharpBridgeSpec):
+        return generate_csharp_bridge_hrx(
+            spec, include_scour_analyses=include_scour_analyses
+        )
+    if not isinstance(spec, BridgeSpec):
+        raise TypeError(f"unsupported bridge spec: {type(spec).__name__}")
     mesh = build_bridge_mesh(spec)
     return serialize_mesh_to_hrx(mesh, include_scour_analyses=include_scour_analyses)
 
 
 def generate_bridge_hrx_file(
-    spec: BridgeSpec,
+    spec,
     output_path: Union[str, Path],
     include_scour_analyses: bool = True,
 ) -> Path:
-    """Generate an HRX model file from a parametric BridgeSpec."""
+    """Generate an HRX model file from a bridge spec."""
     hrx_bytes = generate_bridge_hrx(spec, include_scour_analyses=include_scour_analyses)
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

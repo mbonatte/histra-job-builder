@@ -137,3 +137,14 @@ def test_csharp_parity_api_is_public() -> None:
     assert histra_builder.CSharpBridgeSpec is CSharpBridgeSpec
     assert histra_builder.build_csharp_bridge_mesh is not None
     assert histra_builder.generate_csharp_bridge_hrx is not None
+
+
+def test_generate_bridge_hrx_dispatches_csharp_spec() -> None:
+    from histra_builder.generator import generate_bridge_hrx
+
+    root = etree.fromstring(
+        generate_bridge_hrx(_spec(), include_scour_analyses=False)
+    )
+    assert len(root.findall("Quad")) == 156
+    assert root.find("Bridge") is not None
+    assert len(root.findall("GeometryLineRestraint")) == 12
