@@ -9,6 +9,32 @@ Golden reference for the first slice:
 - Shape: 2 spans (450 cm), 1 pier (50 x 200 cm), 2 abutments (40 cm, H=0), width 300 cm, 3 x 100 cm strips, Nl=100, one elevation at 126.5 cm.
 - Expected: 222 structural nodes, 156 quads, 12 GLRs, 12 restraints, 21 NodeCs.
 
+## Provided native models (`histral_models/`)
+
+The `histral_models/` folder is now the second golden source. It is ignored by git
+because of its size; compact WizardData fixtures are stored under
+`tests/fixtures/csharp/`.
+
+Useful models:
+
+- `Bridge_3/Bridge_3_abutment.hrx`
+  - 3 spans, 2 piers, 3 unequal strips (`33/288/33`).
+  - Exterior strips have `Height=17` -> `Nstrati=4`.
+  - Abutments have `Hf=92` footings.
+  - Native: 1088 quads, 18 GLRs, 48 restraints.
+  - Our current exterior strips match exactly: `141:320, 18:56, 22:4`.
+  - Known deltas: interior foundation quads (`60` native vs `48` generated),
+    and restraint expansion (`48` native vs `18` direct-GLR restraints).
+  - Fixture: `tests/fixtures/csharp/bridge3_abutment_wizard.hrx`.
+  - Test: `tests/test_csharp_bridge3_golden.py`.
+
+- `Bridge_1/*`, `Bridge_2/*`, `Bridge_3.1/*`, `Bridge_3.2/*`, `Bridge_3.3/*`,
+  `Bridge_3.4/*`, `Bridge_5.1/*`, `Bridge_5.2/*`
+  - Further 1–3 span variants, mesh densities, material/load calibrations, and
+    solved result CSVs.
+  - Most have `H2=H3=0`; several use exterior `Corsia.Height` to exercise the
+    fourth layer, but they do not provide true multi-stratigraphy elevations.
+
 ## Completed
 
 1. **Golden fixture + provenance test**
@@ -120,7 +146,9 @@ These are implemented only at the formula/structural level, or not at all,
 because no native golden model exists in the repository:
 
 1. Multi-layer curved transition / `AddMesh2` triangle topology.
-2. Footing golden validation (`Hf > 0`, wings, reinforcement extensions).
+2. Footing edge cases beyond `Bridge_3_abutment`: foundation wings
+   (`B1f/B3f/W1f/W3f`), reinforcement extensions, and footing restraint
+   expansion/segmentation.
 3. Passive earth-pressure `SurfaceRestraint` path.
 4. Inclined/slope/curved bridge transforms.
 5. RailBridge2 / masonry walls / `BackFill` path.
@@ -174,6 +202,19 @@ Please provide the following native `.hrx` files (or the C# WizardData plus a sa
     - The native `Template` elements generated from `DBRoadBridge/dbo.MaterialsMasonry.csv` with serialized enum names, or a saved model using those DB defaults.
     - Needed to distinguish the native model reference set from database-seed defaults.
 
+## Known deltas exposed by `histral_models`
+
+1. **Restraint expansion**: native `Bridge_3_abutment` has 48 restraints from
+   18 GLRs, because `RestraintMesher` emits one restraint per foundation
+   quad/column. The current builder emits one restraint per GLR.
+2. **Abutment foundation discretization**: native interior-strip foundation
+   produces 60 quads vs 48 in the current builder (`DiscrLeft/DiscrRight` and
+   `WidthBottom`/GLR `B` handling for abutment footings need refinement).
+3. **Project-specific material keys**: native uses custom templates `141`
+   (Spandrel), `152` (Backfill_Arch), and `147` (Backfill_Load). The structural
+   exterior strips match, but the interior fill material keys differ from the
+   default template set.
+
 ## Verification
 
 ```bash
@@ -181,4 +222,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `136 passed, 1 skipped` (optional real-HRX gate).
+Current status: `139 passed, 1 skipped` (optional real-HRX gate).
