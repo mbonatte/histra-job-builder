@@ -28,6 +28,19 @@ Useful models:
   - Fixture: `tests/fixtures/csharp/bridge3_abutment_wizard.hrx`.
   - Test: `tests/test_csharp_bridge3_golden.py`.
 
+- `Bridge_scour_3d.hrx` (root of `histra-job-builder/`)
+  - 3 spans, 2 piers, 8 x 36 cm strips.
+  - Pier footings: `Hf=70`, `B1f=B3f=50`, `W1f=W3f=25`.
+  - 2520 quads, 96 GLRs, 136 restraints, 7 model points.
+  - Our generated mesh now matches exactly at the quad/material/GLR level:
+    `2520` quads, `96` GLRs, material counts
+    `19:1664, 18:448, 141:360, 22:48`, and the two ±156.5 wing strips.
+  - Known delta: native emits 136 restraints because `RestraintMesher` splits
+    some GLRs across multiple foundation quads; the builder still emits one
+    restraint per GLR (`96`).
+  - Fixture: `tests/fixtures/csharp/bridge_scour_3d_wizard.hrx`.
+  - Test: `tests/test_csharp_scour3d_golden.py`.
+
 - `Bridge_1/*`, `Bridge_2/*`, `Bridge_3.1/*`, `Bridge_3.2/*`, `Bridge_3.3/*`,
   `Bridge_3.4/*`, `Bridge_5.1/*`, `Bridge_5.2/*`
   - Further 1–3 span variants, mesh densities, material/load calibrations, and
@@ -204,9 +217,11 @@ Please provide the following native `.hrx` files (or the C# WizardData plus a sa
 
 ## Known deltas exposed by `histral_models`
 
-1. **Restraint expansion**: native `Bridge_3_abutment` has 48 restraints from
-   18 GLRs, because `RestraintMesher` emits one restraint per foundation
-   quad/column. The current builder emits one restraint per GLR.
+1. **Restraint expansion**: native models combine foundation columns into a
+   single GLR and then `RestraintMesher` emits one restraint per intersected
+   quad (e.g. `Bridge_3_abutment`: 48 restraints from 18 GLRs;
+   `Bridge_scour_3d`: 136 restraints from 96 GLRs). The current builder emits
+   one restraint per GLR.
 2. **Abutment foundation discretization**: native interior-strip foundation
    produces 60 quads vs 48 in the current builder (`DiscrLeft/DiscrRight` and
    `WidthBottom`/GLR `B` handling for abutment footings need refinement).
@@ -222,4 +237,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `139 passed, 1 skipped` (optional real-HRX gate).
+Current status: `141 passed, 1 skipped` (optional real-HRX gate).
