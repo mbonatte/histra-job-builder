@@ -44,6 +44,19 @@ from .restraints import (
     GeneratedRestraint,
     create_foundation_edge_restraint,
 )
+from .csharp_model import (
+    Abutment as CSharpAbutment,
+    BridgeDefinition as CSharpBridgeDefinition,
+    BridgeElement as CSharpBridgeElement,
+    CSharpBridgeSpec,
+    Corsia as CSharpCorsia,
+    Elevation as CSharpElevation,
+    Elevations as CSharpElevations,
+    Pier as CSharpPier,
+    Span as CSharpSpan,
+)
+from .csharp_mesher import CSharpBridgeMesh, CSharpMesher, build_csharp_bridge_mesh
+from .csharp_writer import generate_csharp_bridge_hrx, serialize_csharp_mesh_to_hrx
 
 __all__ = [
     "BridgeSpec",
@@ -77,4 +90,18 @@ __all__ = [
     "SOIL_146",
     "SOIL_REMOVED_147",
     "create_foundation_edge_restraint",
+    "CSharpAbutment",
+    "CSharpBridgeDefinition",
+    "CSharpBridgeElement",
+    "CSharpBridgeSpec",
+    "CSharpCorsia",
+    "CSharpElevation",
+    "CSharpElevations",
+    "CSharpPier",
+    "CSharpSpan",
+    "CSharpBridgeMesh",
+    "CSharpMesher",
+    "build_csharp_bridge_mesh",
+    "generate_csharp_bridge_hrx",
+    "serialize_csharp_mesh_to_hrx",
 ]

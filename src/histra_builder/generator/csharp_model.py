@@ -67,6 +67,23 @@ class BridgeElement:
     material_reinforcement_left_key: int = 24
     material_reinforcement_right_key: int = 24
 
+    # Compatibility aliases used by the existing HRX writer.
+    @property
+    def height(self) -> float:
+        return self.H
+
+    @property
+    def foundation_height(self) -> float:
+        return self.Hf
+
+    @property
+    def thickness(self) -> float:
+        return self.b2
+
+    @property
+    def foundation_material_key(self) -> int:
+        return self.material_foundation_key
+
 
 @dataclass
 class Abutment(BridgeElement):
@@ -93,6 +110,10 @@ class Pier(BridgeElement):
     material_geo2_key: int = 60
     Tr1: float = 0.0
     Tr2: float = 0.0
+
+    @property
+    def subgrade_modulus_kz(self) -> float:
+        return self.Kz
 
 
 @dataclass
@@ -122,6 +143,23 @@ class Span:
     discr_left: int = 1
     discr_right: int = 1
     circolare: bool = False
+
+    # Compatibility aliases used by the existing HRX writer.
+    @property
+    def length(self) -> float:
+        return self.L
+
+    @property
+    def rise(self) -> float:
+        return self.f
+
+    @property
+    def thickness_springer(self) -> float:
+        return self.Tb
+
+    @property
+    def thickness_crown(self) -> float:
+        return self.Tt
 
 
 @dataclass
@@ -281,3 +319,25 @@ class CSharpBridgeSpec:
     @property
     def piers(self) -> List[Pier]:
         return [element for element in self.elements if isinstance(element, Pier)]
+
+    @property
+    def left_abutment(self) -> Abutment:
+        abutments = self.abutments
+        if not abutments:
+            raise ValueError("bridge has no left abutment")
+        return abutments[0]
+
+    @property
+    def right_abutment(self) -> Abutment:
+        abutments = self.abutments
+        if not abutments:
+            raise ValueError("bridge has no right abutment")
+        return abutments[-1]
+
+    @property
+    def num_transverse_strips(self) -> int:
+        return len(self.definition.corsias)
+
+    @property
+    def deck_clearance(self) -> float:
+        return 0.0

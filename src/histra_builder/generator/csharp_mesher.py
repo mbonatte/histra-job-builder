@@ -25,7 +25,7 @@ from .csharp_arch import (
     half_arch_params,
 )
 from .geometry import Point3D, compute_quad_kinematics, signed_area_xz
-from .mesher import GeneratedQuad
+from .mesher import GeneratedQuad, PierMetadata
 from .restraints import GeneratedNodeC, GeneratedRestraint
 from .csharp_model import (
     Abutment,
@@ -123,6 +123,8 @@ class CSharpBridgeMesh:
     geometry_line_restraints: List[GeneratedGeometryLineRestraint]
     restraints: List[GeneratedRestraint]
     node_cs: List[GeneratedNodeC]
+    monitoring_points: List[object]
+    piers: List[PierMetadata]
     deck_z: float
     total_length: float
 
@@ -147,6 +149,7 @@ class CSharpMesher:
         self._glrs: List[GeneratedGeometryLineRestraint] = []
         self._restraints: List[GeneratedRestraint] = []
         self._node_cs: List[GeneratedNodeC] = []
+        self._piers: List[PierMetadata] = []
 
     # -- geometric primitives -------------------------------------------------
 
@@ -683,6 +686,18 @@ class CSharpMesher:
         for corsia, y in zip(self.spec.definition.corsias, centres):
             self._add_pier_shafts(y, corsia.width)
         self._build_foundation_supports()
+        for index, element in enumerate(self.spec.piers, start=1):
+            centre = self._element_origin(element)
+            self._piers.append(
+                PierMetadata(
+                    id=f"pier_{index}",
+                    index=index,
+                    origin=Point3D(centre, 0.0, 0.0),
+                    x_start=centre - element.b2 / 2.0,
+                    x_end=centre + element.b2 / 2.0,
+                    restraint_keys=[],
+                )
+            )
         return CSharpBridgeMesh(
             spec=self.spec,
             nodes=self.nodes,
@@ -690,6 +705,8 @@ class CSharpMesher:
             geometry_line_restraints=self._glrs,
             restraints=self._restraints,
             node_cs=self._node_cs,
+            monitoring_points=[],
+            piers=self._piers,
             deck_z=self._deck_z,
             total_length=self._total_length,
         )
