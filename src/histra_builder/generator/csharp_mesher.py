@@ -27,6 +27,11 @@ from .csharp_arch import (
 from .geometry import Point3D, compute_quad_kinematics, signed_area_xz
 from .mesher import GeneratedQuad, PierMetadata
 from .restraints import GeneratedNodeC, GeneratedRestraint
+from .csharp_discretize import (
+    discretize_bottom_foundation_pileb2,
+    discretize_bottom_pileb2,
+    discretize_top_pileb2,
+)
 from .csharp_model import (
     Abutment,
     BridgeDefinition,
@@ -292,7 +297,9 @@ class CSharpMesher:
         material_key: int,
         thickness: float,
         is_right: bool,
-    ) -> None:
+        group: str = "CSharp_Fill",
+    ) -> List[GeneratedQuad]:
+        created: List[GeneratedQuad] = []
         for i in range(n):
             if is_right:
                 a = [
@@ -309,17 +316,20 @@ class CSharpMesher:
                     _lerp(points[0], points[3], (i + 1) / n),
                 ]
             for j in range(m):
-                self._quad(
-                    [
-                        _lerp(a[0], a[3], j / m),
-                        _lerp(a[1], a[2], j / m),
-                        _lerp(a[1], a[2], (j + 1) / m),
-                        _lerp(a[0], a[3], (j + 1) / m),
-                    ],
-                    material_key,
-                    thickness,
-                    "CSharp_Fill",
+                created.append(
+                    self._quad(
+                        [
+                            _lerp(a[0], a[3], j / m),
+                            _lerp(a[1], a[2], j / m),
+                            _lerp(a[1], a[2], (j + 1) / m),
+                            _lerp(a[0], a[3], (j + 1) / m),
+                        ],
+                        material_key,
+                        thickness,
+                        group,
+                    )
                 )
+        return created
 
     # -- AddSemiArcoSx1 / Dx1 ------------------------------------------------
 
@@ -396,7 +406,9 @@ class CSharpMesher:
             self.spec.definition.corsias[0].width,
             is_right,
         )
-        return extrados_points, n4
+        # C# sets span.DiscrLeft/Right from Colonne.First().N.  In the
+        # non-curved AddMesh4 branch each colonna is created with N=1.
+        return extrados_points, 1
 
     # -- AddMeshArco1 --------------------------------------------------------
 
@@ -469,16 +481,21 @@ class CSharpMesher:
                     "CSharp_Pulvino",
                 )
                 if foundation_owner is not None:
-                    left_key = self._node((pulvino[0].x, y, pulvino[0].z))
-                    right_key = self._node((pulvino[1].x, y, pulvino[1].z))
-                    self._record_foundation_edge(
-                        foundation_owner,
-                        y,
-                        0,
-                        pulvino_quad,
-                        left_key,
-                        right_key,
-                    )
+                    owner = self.spec.elements[foundation_owner]
+                    if (
+                        getattr(owner, "H", 0.0) <= 0.0
+                        and getattr(owner, "Hf", 0.0) <= 0.0
+                    ):
+                        left_key = self._node((pulvino[0].x, y, pulvino[0].z))
+                        right_key = self._node((pulvino[1].x, y, pulvino[1].z))
+                        self._record_foundation_edge(
+                            foundation_owner,
+                            y,
+                            0,
+                            pulvino_quad,
+                            left_key,
+                            right_key,
+                        )
 
     # -- AddBridgeRow1 -------------------------------------------------------
 
@@ -545,35 +562,88 @@ class CSharpMesher:
 
     # -- AddSpallePile -------------------------------------------------------
 
-    def _add_pier_shafts(self, y: float, thickness: float) -> None:
+    def _add_spalle_pile(self, centres: Sequence[float]) -> None:
+        """Port of ``generatePilaSpalla`` + ``generateMasonryFoundation``."""
         for owner_index, element in enumerate(self.spec.elements):
-            if not isinstance(element, Pier) or element.H <= 0.0:
+            if not isinstance(element, (Abutment, Pier)):
                 continue
             centre = self._element_origin(element)
-            # Verified case: Asx/Adx != 0 -> no springer segments in the
-            # pier-top discretization; DiscrLeft/DiscrRight split b2.
-            half = element.b2 / 2.0
-            columns = [centre - half, centre, centre + half]
-            rows = max(1, _arrotonda(element.H / self.spec.definition.nl))
-            z_rows = [-element.H + r * element.H / rows for r in range(rows + 1)]
-            for column in range(len(columns) - 1):
-                for row in range(rows):
-                    points = [
-                        Point3D(columns[column], y, z_rows[row]),
-                        Point3D(columns[column + 1], y, z_rows[row]),
-                        Point3D(columns[column + 1], y, z_rows[row + 1]),
-                        Point3D(columns[column], y, z_rows[row + 1]),
-                    ]
-                    quad = self._quad(points, element.material_key, thickness, "CSharp_Pier")
-                    if row == 0:
-                        self._record_foundation_edge(
-                            owner_index,
-                            y,
-                            column,
-                            quad,
-                            self._node(points[0]),
-                            self._node(points[1]),
+            for corsia, y in zip(self.spec.definition.corsias, centres):
+                thickness = corsia.width
+                top = [centre + value for value in discretize_top_pileb2(self.spec.elements, owner_index)]
+                bottom = [centre + value for value in discretize_bottom_pileb2(self.spec.elements, owner_index)]
+                columns = len(top) - 1
+                if element.H > 0.0 and columns > 0:
+                    rows = max(0, _arrotonda(element.H / self.spec.definition.nl))
+                    for column in range(columns):
+                        points = [
+                            Point3D(bottom[column], y, -element.H),
+                            Point3D(bottom[column + 1], y, -element.H),
+                            Point3D(top[column + 1], y, 0.0),
+                            Point3D(top[column], y, 0.0),
+                        ]
+                        span_width = top[column + 1] - top[column]
+                        cross = max(1, _arrotonda(abs(span_width) / self.spec.definition.nl))
+                        created = self._add_mesh3(
+                            points,
+                            rows,
+                            cross,
+                            element.material_key,
+                            thickness,
+                            False,
+                            "CSharp_Pier",
                         )
+                        if element.Hf <= 0.0 and created:
+                            self._record_foundation_edge(
+                                owner_index,
+                                y,
+                                column,
+                                created[0],
+                                self._node(points[0]),
+                                self._node(points[1]),
+                            )
+
+                if element.Hf > 0.0:
+                    foundation_bottom = [
+                        centre + value
+                        for value in discretize_bottom_foundation_pileb2(
+                            self.spec.elements, owner_index
+                        )
+                    ]
+                    foundation_columns = len(foundation_bottom) - 1
+                    rows = max(1, _arrotonda(element.Hf / self.spec.definition.nl))
+                    for column in range(foundation_columns):
+                        points = [
+                            Point3D(foundation_bottom[column], y, -element.H - element.Hf),
+                            Point3D(foundation_bottom[column + 1], y, -element.H - element.Hf),
+                            Point3D(foundation_bottom[column + 1], y, -element.H),
+                            Point3D(foundation_bottom[column], y, -element.H),
+                        ]
+                        cross = max(
+                            1,
+                            _arrotonda(
+                                abs(foundation_bottom[column + 1] - foundation_bottom[column])
+                                / self.spec.definition.nl
+                            ),
+                        )
+                        created = self._add_mesh3(
+                            points,
+                            rows,
+                            cross,
+                            element.material_foundation_key,
+                            thickness,
+                            False,
+                            "CSharp_Foundation",
+                        )
+                        if created:
+                            self._record_foundation_edge(
+                                owner_index,
+                                y,
+                                column,
+                                created[0],
+                                self._node(points[0]),
+                                self._node(points[1]),
+                            )
 
     # -- foundation edge / GLR / Restraint generation -----------------------
 
@@ -594,8 +664,6 @@ class CSharpMesher:
         """Port of ``generateMasonryFoundation`` for the verified Hf=0 case."""
         if not self._foundation_edges:
             return
-        # C# AddSpallePile iterates data-list elements, then corsia strips
-        # (y descending), then each foundation discretization segment.
         edges = sorted(
             self._foundation_edges,
             key=lambda item: (item[0], -item[1], item[2]),
@@ -612,7 +680,6 @@ class CSharpMesher:
             glr = GeneratedGeometryLineRestraint(
                 key=glr_key,
                 name=str(glr_key),
-                # C# passes (list[1], list[0]) to the GLR constructor.
                 node_key1=right_key,
                 node_key2=left_key,
                 b=strip_width,
@@ -683,8 +750,7 @@ class CSharpMesher:
             heights = 4 if corsia.height > 0.0 else 3
             self._add_bridge_row(abscissa, spans, y, corsia.width, heights)
         # C# AddSpallePile runs once after all transverse rows have been built.
-        for corsia, y in zip(self.spec.definition.corsias, centres):
-            self._add_pier_shafts(y, corsia.width)
+        self._add_spalle_pile(centres)
         self._build_foundation_supports()
         for index, element in enumerate(self.spec.piers, start=1):
             centre = self._element_origin(element)
