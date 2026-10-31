@@ -62,36 +62,93 @@ Golden reference for the first slice:
     - Commit: `9d51501`
     - Aligned `ToleranceNode`, `TolerancePlane`, `InterfaceImax`, `SolverParallel`, `VaultMesherQuadNumMin2` with `DefaultValues.cs`.
 
-## Deferred
+## Completed (continued)
+
+12. **Native `WizardData` parity**
+    - Commit: `3f6f22e`, `7fc4e47`
+    - Full `BridgeDefinition` children (`Corsie`, `Trunks`, `Zlevels`, `Binaries`, `MasonryBridgeWalls`).
+    - Full native `Abutment`/`Span`/`Pier` attribute sets.
+    - `<Elevations>` sections and `Layer1/2/3`.
+    - Tests: `tests/test_csharp_writer.py`.
+
+13. **Native material templates**
+    - Commit: `8d6c30b`
+    - `materials.py` now matches native templates 18/19/22/141/146/147 exactly.
+    - Legacy `BridgeSpec` keeps a compatibility material set; C#-parity path uses native values.
+    - Test: `tests/test_csharp_materials.py`.
+
+14. **Native default model point**
+    - Commit: `1383414`, `32f1a6d`
+    - Ported `ModelPointOperations.TryAddDefaultModelPoints`: highest-Z node nearest the plan centre.
+    - Emits native `ModelPoint` attributes and links analyses through `MasterPoint`.
+    - Test: `tests/test_csharp_mesher.py` and `tests/test_csharp_writer.py`.
+
+15. **Native attribute completeness**
+    - Commit: `28b5a77`, `8484e11`
+    - `NodeC` afference matrices + reference system.
+    - Full `Quad` native attributes (`U1..U7`, load templates, modified flag).
+    - Native `ModelPoint`, `NodeC`, `Node` names/flags; load-condition gamma fields.
+
+16. **Default generator integration**
+    - Commit: `12b3feb`
+    - `generate_bridge_hrx(CSharpBridgeSpec)` dispatches to the C#-parity writer.
+
+17. **Native portfolio / scour integration**
+    - Commit: `aaafd2c`
+    - `native_portfolio.py` samples real `CSharpBridgeSpec` values, regenerates the mesh, resolves pier foundation interface keys through `histra-python`, and emits `workflow.interface_mutations` with material 147.
+    - CLI: `histra-builder generate-native`.
+    - Test: `tests/test_native_portfolio.py`.
+
+## Deferred (by request)
 
 1. **Multi-layer elevations / BackFill**
-   - Deferred by request. Keep as a future step.
    - Port the `Nstrati=4` and `Elevations.GetMaterialKey` branches.
    - Add a native golden model with `H2/H3 > 0`.
 
-## Next tasks
+## Needed C# golden models
 
-2. **Native `WizardData` parity**
-   - Emit full `BridgeDefinition` children (`Corsie`, `Trunks`, `Zlevels`, `Binaries`, `MasonryBridgeWalls`).
-   - Emit full `Abutment`/`Span`/`Pier` attributes.
-   - Emit `<Elevations>` children + `Layer1/2/3`.
-   - Add `AfferenceMatrices`/`ReferenceSystem` on `NodeC`; full `Quad`/`ModelPoint`/`Analysis` attributes.
+Please provide the following native `.hrx` files (or the C# WizardData plus a saved model) when available. They are needed to verify slices that currently have formula-level/structural tests but no native golden.
 
-5. **Material template source**
-   - Stop hardcoding a single project's templates.
-   - Load templates from the C# DB assets or a registry.
-   - Add attribute-level template tests.
+1. **Multi-layer elevation model**
+   - `Elevations` with `H1/H2/H3 > 0` and preferably `IsStratigraphyVariable=true`.
+   - Needed for `Nstrati=4`, layer material transitions, and `AddSemiArco` multi-layer branches.
 
-6. **Model point parity**
-   - Generate the same per-span/per-pier model points as C#.
+2. **Footing model**
+   - Abutment and/or pier with `Hf > 0`.
+   - Prefer non-zero `B1f`, `B3f`, `W1f`, `W3f` and `b1/b3/w1/w3`.
+   - Needed to verify foundation quads, foundation GLRs, and footing GLR segmentation.
 
-7. **Default generator integration**
-   - Make `generate_bridge_hrx` use the C#-parity path for all new portfolio generation.
-   - Keep the old simplified `BridgeSpec` path as an explicit compatibility API if needed.
+3. **Passive earth-pressure model**
+   - `SpintaPassivaSX` and/or `SpintaPassivaDX = true`.
+   - Needed to verify `SurfaceRestraint` geometry and material/load assignment.
 
-8. **Portfolio / scour integration**
-   - Regenerate geometry for sampled parameters (not only WizardData patches).
-   - Resolve `pier_1`/fraction to concrete interface keys and emit `workflow.interface_mutations`.
+4. **Inclined / curved model**
+   - `InclinationAngle != 0`, `Slope != 0`, and/or a curved `BridgeTrunk`.
+   - Needed to verify normal rotation, node projection, and quad thickness interpolation.
+
+5. **RailBridge2 / masonry-wall model**
+   - `WizardType=RailBridge2`, `MasonryBridgeWalls`, `BackFill`.
+   - Needed to verify `AddBridge2` and the wall/backfill path.
+
+6. **Full-section model**
+   - Non-zero `b1/b3`, `w1/w3`, `VerticalAllignment != Center`, reinforcement plates, or cutwater geometry.
+   - Needed to verify `generatePilaSpalla` taper, reinforcement, and alignment branches.
+
+7. **Custom model-point model**
+   - Multiple `ModelPoint` elements, including non-default Node/Quad/Vertex selections.
+   - Needed to verify user-authored model-point parity beyond the default highest-node rule.
+
+8. **Asymmetric arch model**
+   - Non-zero `S1/S2`, different `Asx/Adx`, and/or `Tb1/Tb2` differences.
+   - Needed to verify the full retained-arch parameter path.
+
+9. **Four-plus span / unequal-span model**
+   - At least 4 spans and unequal span lengths.
+   - Needed to verify `DiscrLeft/DiscrRight` across multiple piers and long chains.
+
+10. **Database/template reference export**
+    - The native `Template` elements generated from `DBRoadBridge/dbo.MaterialsMasonry.csv` with serialized enum names, or a saved model using those DB defaults.
+    - Needed to distinguish the native model reference set from database-seed defaults.
 
 ## Verification
 
@@ -100,4 +157,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `122 passed, 1 skipped` (optional real-HRX gate).
+Current status: `133 passed, 1 skipped` (optional real-HRX gate).
