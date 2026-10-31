@@ -196,7 +196,7 @@ def compute_quad_kinematics(
     for j in range(4):
         a=xy[j]; b=xy[(j+1)%4]; value=a[0]*b[1]-b[0]*a[1]
         cross_sum+=value;mx+=(a[0]+b[0])*value;my+=(a[1]+b[1])*value
-    if cross_sum<=0: raise ValueError("Quad polygon has nonpositive area")
+    if abs(cross_sum)<=1e-12: raise ValueError("Quad polygon has zero area")
     cx=mx/(3*cross_sum);cy=my/(3*cross_sum)
     centroid=Point3D((p0.x+p1.x)/2+cx*e1[0]+cy*e2[0],
                      (p0.y+p1.y)/2+cx*e1[1]+cy*e2[1],

@@ -129,9 +129,8 @@ class CSharpMesher:
 
     def _quad(self, points: Sequence[Sequence[float]], material_key: int, thickness: float, group: str) -> GeneratedQuad:
         pts = [Point3D(*_xyz(p)) for p in points]
-        area = signed_area_xz(pts)
-        if area < 0.0:
-            pts = [pts[0], pts[3], pts[2], pts[1]]
+        # Preserve the C# node order: BridgeMesher relies on it for the
+        # element reference system and sets the normal from the winding.
         kinematics = compute_quad_kinematics(
             pts,
             thickness=thickness,
@@ -232,10 +231,10 @@ class CSharpMesher:
             for j in range(m):
                 if is_right:
                     points = [
-                        _lerp(a[0], a[3], j / m),
                         _lerp(a[1], a[2], j / m),
-                        _lerp(a[1], a[2], (j + 1) / m),
+                        _lerp(a[0], a[3], j / m),
                         _lerp(a[0], a[3], (j + 1) / m),
+                        _lerp(a[1], a[2], (j + 1) / m),
                     ]
                 else:
                     points = [
@@ -519,6 +518,8 @@ class CSharpMesher:
         for corsia, y in zip(self.spec.definition.corsias, centres):
             heights = 4 if corsia.height > 0.0 else 3
             self._add_bridge_row(abscissa, spans, y, corsia.width, heights)
+        # C# AddSpallePile runs once after all transverse rows have been built.
+        for corsia, y in zip(self.spec.definition.corsias, centres):
             self._add_pier_shafts(y, corsia.width)
         return CSharpBridgeMesh(
             spec=self.spec,

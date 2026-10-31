@@ -104,15 +104,11 @@ def _fixture() -> dict:
 
 
 def _quad_signature(points):
+    # Vertex order is significant: C# stores it as-is and derives the
+    # element reference system/normal winding from it.
     return tuple(
-        sorted(
-            (
-                round(abs(point[1]), 1),
-                round(point[0], 2),
-                round(point[2], 2),
-            )
-            for point in points
-        )
+        (round(point[1], 1), round(point[0], 2), round(point[2], 2))
+        for point in points
     )
 
 
@@ -141,7 +137,7 @@ def test_csharp_mesh_matches_native_quad_geometry() -> None:
         _quad_signature([expected_nodes[key] for key in quad["nodes"]])
         for quad in fixture["quads"]
     )
-    actual = Counter(
+    actual = [
         _quad_signature(
             [
                 (mesh.nodes[key].x, mesh.nodes[key].y, mesh.nodes[key].z)
@@ -149,19 +145,23 @@ def test_csharp_mesh_matches_native_quad_geometry() -> None:
             ]
         )
         for quad in mesh.quads.values()
-    )
-    assert actual == expected
+    ]
+    expected_list = [
+        _quad_signature([expected_nodes[key] for key in quad["nodes"]])
+        for quad in fixture["quads"]
+    ]
+    assert actual == expected_list
 
 
 def test_csharp_mesh_nodes_match_native_geometry() -> None:
     mesh = build_csharp_bridge_mesh(_spec())
     fixture = _fixture()
     expected = {
-        (round(abs(point[1]), 1), round(point[0], 2), round(point[2], 2))
+        (round(point[1], 1), round(point[0], 2), round(point[2], 2))
         for point in (tuple(value) for value in fixture["nodes"].values())
     }
     actual = {
-        (round(abs(node.y), 1), round(node.x, 2), round(node.z, 2))
+        (round(node.y, 1), round(node.x, 2), round(node.z, 2))
         for node in mesh.nodes.values()
     }
     assert actual == expected
@@ -169,7 +169,16 @@ def test_csharp_mesh_nodes_match_native_geometry() -> None:
 
 def test_csharp_mesh_has_three_strips_and_four_quads_per_pier_strip() -> None:
     mesh = build_csharp_bridge_mesh(_spec())
-    y_values = {round(abs(node.y), 1) for node in mesh.nodes.values()}
-    assert y_values == {0.0, 100.0}
+    y_values = {round(node.y, 1) for node in mesh.nodes.values()}
+    assert y_values == {-100.0, 0.0, 100.0}
     pier_quads = [quad for quad in mesh.quads.values() if quad.group == "CSharp_Pier"]
     assert len(pier_quads) == 12  # 3 strips * 4 shaft quads
+
+
+def test_csharp_mesh_normal_winding_matches_native() -> None:
+    mesh = build_csharp_bridge_mesh(_spec())
+    normals = Counter(
+        round(quad.kinematics.normals[0].y, 1) for quad in mesh.quads.values()
+    )
+    # C# BridgeMesher flips the normal for the 12 negatively wound fill quads.
+    assert normals == Counter({-1.0: 144, 1.0: 12})
