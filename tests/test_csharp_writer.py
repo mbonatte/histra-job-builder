@@ -129,3 +129,11 @@ def test_csharp_writer_output_loads_and_prepares(tmp_path: Path) -> None:
     assert report.prepared is True
     assert report.restraint_interfaces == 12
     assert report.interfaces > 0
+
+
+def test_csharp_parity_api_is_public() -> None:
+    import histra_builder
+
+    assert histra_builder.CSharpBridgeSpec is CSharpBridgeSpec
+    assert histra_builder.build_csharp_bridge_mesh is not None
+    assert histra_builder.generate_csharp_bridge_hrx is not None
