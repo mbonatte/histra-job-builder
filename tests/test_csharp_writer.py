@@ -6,6 +6,8 @@ from pathlib import Path
 
 from lxml import etree
 
+import pytest
+
 from histra_builder.generator.csharp_model import (
     Abutment,
     BridgeDefinition,
@@ -148,3 +150,85 @@ def test_generate_bridge_hrx_dispatches_csharp_spec() -> None:
     assert len(root.findall("Quad")) == 156
     assert root.find("Bridge") is not None
     assert len(root.findall("GeometryLineRestraint")) == 12
+
+
+def test_csharp_wizard_data_matches_native_children_and_core_attributes() -> None:
+    fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    native_wizard = fixture["wizard"]
+    root = etree.fromstring(
+        generate_csharp_bridge_hrx(_spec(), include_scour_analyses=False)
+    )
+    wizard = root.find("WizardData")
+    assert wizard is not None
+    assert wizard.get("TypeOf") == "HiStrA.Objects.WizardBridge"
+
+    native_definition = native_wizard["bridge_definition"]
+    definition = wizard.find("BridgeDefinition")
+    assert definition is not None
+    for attribute in (
+        "Width",
+        "WidthTopPile",
+        "Nl",
+        "Nt",
+        "InclinationAngle",
+        "Slope",
+        "Zlevel",
+        "ThicknessBallast",
+        "ThicknessRiempimento",
+    ):
+        assert float(definition.get(attribute)) == pytest.approx(
+            float(native_definition[attribute])
+        )
+
+    corsias = definition.findall("Corsie/Corsia")
+    assert [float(item.get("Width")) for item in corsias] == [100.0, 100.0, 100.0]
+    assert len(definition.findall("Trunks/Trunk")) == 1
+    assert definition.find("Zlevels") is not None
+    assert definition.find("Binaries") is not None
+    assert definition.find("MasonryBridgeWalls") is not None
+
+    for tag, native_items in (
+        ("Abutment", native_wizard["abutments"]),
+        ("Span", native_wizard["spans"]),
+        ("Pier", native_wizard["piers"]),
+    ):
+        generated = wizard.findall(tag)
+        assert len(generated) == len(native_items)
+        for actual, expected in zip(generated, native_items):
+            for attribute in ("MaterialKey", "MaterialFoundationKey"):
+                if attribute in expected:
+                    assert actual.get(attribute) == expected[attribute]
+            if tag != "Span":
+                for attribute in ("H", "Hf", "b1", "b2", "b3", "w1", "w2", "w3"):
+                    assert float(actual.get(attribute)) == pytest.approx(
+                        float(expected[attribute])
+                    )
+            else:
+                for attribute in (
+                    "L",
+                    "W",
+                    "f",
+                    "Tb",
+                    "Tb1",
+                    "Tb2",
+                    "Tt",
+                    "Asx",
+                    "Adx",
+                    "S1",
+                    "S2",
+                    "Dz",
+                ):
+                    assert float(actual.get(attribute)) == pytest.approx(
+                        float(expected[attribute])
+                    )
+
+    sections = wizard.findall("Elevations/Elevations/Elevation")
+    assert len(sections) == 1
+    assert float(sections[0].get("H1")) == pytest.approx(126.5)
+    layers = [
+        wizard.find("Elevations/Layer1"),
+        wizard.find("Elevations/Layer2"),
+        wizard.find("Elevations/Layer3"),
+    ]
+    assert [layer.get("MaterialKey") for layer in layers] == ["19", "20", "21"]
+    assert all(layer.get("GenerateComputationalElements") == "true" for layer in layers)

@@ -17,6 +17,7 @@ from lxml import etree
 from .csharp_mesher import CSharpBridgeMesh, build_csharp_bridge_mesh
 from .csharp_model import CSharpBridgeSpec
 from .hrx_writer import serialize_mesh_to_hrx
+from .csharp_wizard import replace_wizard_data
 
 
 def _key_list(parent: etree._Element, tag: str, item_tag: str, keys) -> None:
@@ -133,6 +134,7 @@ def serialize_csharp_mesh_to_hrx(
         pretty_print=False,
     )
     root = etree.fromstring(raw)
+    replace_wizard_data(root, mesh.spec)
     _add_bridge_element(root, mesh)
     _add_geometry_line_restraints(root, mesh)
     _reparent_restraints(root, mesh)
