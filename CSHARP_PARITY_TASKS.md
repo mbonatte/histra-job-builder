@@ -237,4 +237,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `152 passed, 1 skipped` (optional real-HRX gate).
+Current status: `153 passed, 1 skipped` (optional real-HRX gate).

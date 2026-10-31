@@ -50,6 +50,8 @@ def test_default_preview_has_bridge_geometry() -> None:
     assert summary["geometry_line_restraints"] > 0
     assert summary["restraints"] == summary["geometry_line_restraints"]
     assert all(len(quad["nodes"]) == 4 for quad in preview["quads"])
+    # Four strips x (two abutment + two pier springings).
+    assert sum(1 for quad in preview["quads"] if quad["material"] == 22) == 16
     assert preview["materials"]["18"]["name"] == "Masonry"
     assert summary["bounds"]["max"][2] > summary["bounds"]["min"][2]
 

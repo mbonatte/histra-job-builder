@@ -506,8 +506,14 @@ class CSharpMesher:
                 suppress_pulvino = False
                 if foundation_owner is not None:
                     owner = self.spec.elements[foundation_owner]
+                    # Native Bridge_3 uses foundation-only abutments (H = 0,
+                    # Hf > 0) and does not emit a springing pulvino there.
+                    # A footing under an abutment with a real shaft still
+                    # needs the block that closes the arch-to-shaft junction.
                     suppress_pulvino = (
-                        isinstance(owner, Abutment) and owner.Hf > 0.0
+                        isinstance(owner, Abutment)
+                        and owner.Hf > 0.0
+                        and owner.H <= 1.0e-9
                     )
                 if suppress_pulvino:
                     continue

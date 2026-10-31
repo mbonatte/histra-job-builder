@@ -81,6 +81,8 @@ def test_csharp_supports_generate_shafts_and_foundations() -> None:
     groups = Counter(quad.group for quad in mesh.quads.values())
     assert groups["CSharp_Pier"] == 14
     assert groups["CSharp_Foundation"] == 8
+    # Two pier springings and two shafted abutment springings.
+    assert groups["CSharp_Pulvino"] == 4
     assert len(mesh.geometry_line_restraints) == 4
     assert len(mesh.restraints) == 4
     # One abutment edge + two pier edges + one right-abutment edge.
@@ -95,3 +97,17 @@ def test_csharp_supports_load_and_prepare(tmp_path) -> None:
     report = prepare_model(model, force=True)
     assert report.prepared is True
     assert report.restraint_interfaces == 4
+
+
+def test_csharp_footed_abutment_keeps_the_springing_pulvino() -> None:
+    mesh = build_csharp_bridge_mesh(_foundation_spec())
+    pulvinos = [quad for quad in mesh.quads.values() if quad.group == "CSharp_Pulvino"]
+    assert len(pulvinos) == 4
+    left_abutment = [
+        quad
+        for quad in pulvinos
+        if all(mesh.nodes[key].x <= 60.0 + 1.0e-6 for key in quad.node_keys)
+    ]
+    assert len(left_abutment) == 1
+    assert min(mesh.nodes[key].z for key in left_abutment[0].node_keys) == 0.0
+    assert max(mesh.nodes[key].z for key in left_abutment[0].node_keys) > 0.0
