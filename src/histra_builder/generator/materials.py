@@ -837,9 +837,21 @@ SOIL_REMOVED_147: Dict[str, str] = {'TypeOf': 'HiStrA.Objects.MasonryMaterial',
  'IdTexture': '1',
  'Color': '#FF3DF6EE'}
 
+
+# Layer materials 20/21 are present in the C# DB template set.  The native
+# reference models in this repository use only 19 for a single elevation, so
+# these two are derived from the native backfill/foundation templates and
+# overridden with the C# database keys/names/colors.
+FILL_20: Dict[str, str] = dict(BACKFILL_19)
+FILL_20.update({'Key': '20', 'Name': 'Fill', 'Color': '#FFCC0066', 'Gd': '11.5'})
+CONCRETE_21: Dict[str, str] = dict(FOUNDATION_141)
+CONCRETE_21.update({'Key': '21', 'Name': 'Concrete', 'Color': '#FF006699', 'Gd': '269.7619'})
+
 DEFAULT_TEMPLATES = [
     MASONRY_18,
     BACKFILL_19,
+    FILL_20,
+    CONCRETE_21,
     PIER_CAP_22,
     FOUNDATION_141,
     SOIL_146,
@@ -991,6 +1003,8 @@ LEGACY_BACKFILL_19: Dict[str, str] = {'TypeOf': 'HiStrA.Objects.MasonryMaterial'
 LEGACY_TEMPLATES = [
     MASONRY_18,
     LEGACY_BACKFILL_19,
+    FILL_20,
+    CONCRETE_21,
     PIER_CAP_22,
     FOUNDATION_141,
     SOIL_146,
