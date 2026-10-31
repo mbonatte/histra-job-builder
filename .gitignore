@@ -9,3 +9,6 @@ dist/
 .venv/
 .env
 generated_jobs/
+
+histral_models/
+generated_native_jobs/

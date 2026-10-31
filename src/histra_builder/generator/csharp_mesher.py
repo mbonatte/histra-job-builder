@@ -344,6 +344,7 @@ class CSharpMesher:
         is_right: bool,
         heights: int,
         hmuro: float = 0.0,
+        fill_material_override: int = 0,
     ) -> Tuple[List[Point3D], int]:
         z1 = self.spec.elevations.get_z(x1, 1, hmuro)
         z2 = self.spec.elevations.get_z(x2, 1, hmuro)
@@ -377,6 +378,8 @@ class CSharpMesher:
         extrados_points = [Point3D(p[0], y, p[2]) for p in extrados_points]
 
         fill_material, _, _ = self.spec.elevations.get_material_key(1)
+        if fill_material_override > 0:
+            fill_material = fill_material_override
         upper = [
             Point3D(extrados_points[0].x, y, self.spec.elevations.get_z(extrados_points[0].x, 1, hmuro)),
             Point3D(extrados_points[-1].x, y, self.spec.elevations.get_z(extrados_points[-1].x, 1, hmuro)),
@@ -411,6 +414,8 @@ class CSharpMesher:
         columns = sorted({x1, x2, *(point.x for point in extrados_points)})
         for layer in range(2, heights + 1):
             layer_material, _, _ = self.spec.elevations.get_material_key(layer)
+            if fill_material_override > 0:
+                layer_material = fill_material_override
             for left_x, right_x in zip(columns, columns[1:]):
                 width = right_x - left_x
                 if abs(width) <= 1.0e-9:
@@ -498,6 +503,14 @@ class CSharpMesher:
             self._quad(points, span.material_key, self.spec.definition.corsias[0].width, "CSharp_Arch")
 
             if index == 0 and abs(span.Asx if not is_right else span.Adx) > 1.0e-9:
+                suppress_pulvino = False
+                if foundation_owner is not None:
+                    owner = self.spec.elements[foundation_owner]
+                    suppress_pulvino = (
+                        isinstance(owner, Abutment) and owner.Hf > 0.0
+                    )
+                if suppress_pulvino:
+                    continue
                 if is_right:
                     pulvino = [
                         Point3D(int0.x, y, 0.0),
@@ -545,6 +558,7 @@ class CSharpMesher:
         corsia_width: float,
         heights: int,
         hmuro: float = 0.0,
+        fill_material_override: int = 0,
     ) -> None:
         span_index = 0
         for index in range(len(abscissa) - 1):
@@ -577,7 +591,8 @@ class CSharpMesher:
                 crown_point=(params.crown_point[0], y, params.crown_point[2]),
             )
             extrados_points, columns = self._add_semi_arch(
-                span, params, x1, x2, y, is_right, heights, hmuro
+                span, params, x1, x2, y, is_right, heights, hmuro,
+                fill_material_override,
             )
             foundation_owner: Optional[int] = None
             if index == 0:
@@ -835,7 +850,13 @@ class CSharpMesher:
         for corsia, y in zip(self.spec.definition.corsias, centres):
             heights = 4 if corsia.height > 0.0 else 3
             self._add_bridge_row(
-                abscissa, spans, y, corsia.width, heights, corsia.height
+                abscissa,
+                spans,
+                y,
+                corsia.width,
+                heights,
+                corsia.height,
+                corsia.material_key,
             )
         # C# AddSpallePile runs once after all transverse rows have been built.
         self._add_spalle_pile(centres)
