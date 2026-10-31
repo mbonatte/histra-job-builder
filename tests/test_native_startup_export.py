@@ -67,3 +67,16 @@ def test_scour_stages_do_not_reapply_gravity():
         if element.get("loadFunctionKey") == "23"
     ]
     assert [item.get("multiplier") for item in scour_items] == ["0", "0"]
+
+
+def test_native_preparation_defaults_match_csharp_defaultvalues():
+    from histra_builder.generator.native_defaults import PREPARATION_DEFAULTS
+
+    assert PREPARATION_DEFAULTS["ToleranceNode"] == "1"
+    assert PREPARATION_DEFAULTS["TolerancePlane"] == "1"
+    assert PREPARATION_DEFAULTS["InterfaceImax"] == "40"
+    assert PREPARATION_DEFAULTS["SolverParallel"] == "true"
+    assert PREPARATION_DEFAULTS["VaultMesherQuadNumMin2"] == "20"
+    assert PREPARATION_DEFAULTS["InterfaceNrow"] == "3"
+    assert PREPARATION_DEFAULTS["MassMatrixType"] == "Lumped"
+    assert PREPARATION_DEFAULTS["SaveAllSpringStatus"] == "true"

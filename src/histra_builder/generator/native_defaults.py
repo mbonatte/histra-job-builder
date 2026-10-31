@@ -5,15 +5,15 @@ Convergence force/moment references are integers, separate from tolerance.
 """
 
 PREPARATION_DEFAULTS = {'InterfaceNrow': '3',
- 'ToleranceNode': '0.01',
- 'TolerancePlane': '0.01',
- 'InterfaceImax': '400',
+ 'ToleranceNode': '1',
+ 'TolerancePlane': '1',
+ 'InterfaceImax': '40',
  'WallMesherPendenzaMax': '25',
  'WallMesherA': '0.3',
  'WallMesherQuadLengthMax': '100',
  'VaultMesherQuadLengthMax': '50',
  'VaultMesherQuadNumMin1': '1',
- 'VaultMesherQuadNumMin2': '1',
+ 'VaultMesherQuadNumMin2': '20',
  'DrumMesherQuadLengthMax': '100',
  'DrumMesherQuadNumMinVertical': '1',
  'DrumMesherQuadNumMinHorizontal': '1',
@@ -24,7 +24,7 @@ PREPARATION_DEFAULTS = {'InterfaceNrow': '3',
  'DomeMesherQuadNumMinHorizontal': '1',
  'MassMatrixType': 'Lumped',
  'SaveAllSpringStatus': 'true',
- 'SolverParallel': 'false',
+ 'SolverParallel': 'true',
  'Solver': 'InternalUmfpack',
  'MethodSVS': 'MethodA'}
 
