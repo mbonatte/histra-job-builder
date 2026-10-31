@@ -694,6 +694,19 @@ class CSharpMesher:
             (owner_index, strip_y, sub_index, quad.key, left_node, right_node)
         )
 
+    def _foundation_tag(self, owner_index: int) -> str:
+        element = self.spec.elements[owner_index]
+        if isinstance(element, Pier):
+            pier_number = sum(
+                1
+                for item in self.spec.elements[: owner_index + 1]
+                if isinstance(item, Pier)
+            )
+            return f"pier_{pier_number}"
+        if isinstance(element, Abutment):
+            return "abutment_left" if element.kind == "Sinistra" else "abutment_right"
+        return ""
+
     def _build_foundation_supports(self) -> None:
         """Port of ``generateMasonryFoundation`` for the verified Hf=0 case."""
         if not self._foundation_edges:
@@ -702,7 +715,7 @@ class CSharpMesher:
             self._foundation_edges,
             key=lambda item: (item[0], -item[1], item[2]),
         )
-        for _owner, strip_y, _sub, quad_key, left_key, right_key in edges:
+        for owner_index, strip_y, _sub, quad_key, left_key, right_key in edges:
             left = self.nodes[left_key]
             right = self.nodes[right_key]
             if right.x < left.x:
@@ -746,6 +759,7 @@ class CSharpMesher:
                 point2=point2,
                 point3=point3,
                 point4=point4,
+                foundation_tag=self._foundation_tag(owner_index),
             )
             self._next_restraint_key += 1
             self._restraints.append(restraint)

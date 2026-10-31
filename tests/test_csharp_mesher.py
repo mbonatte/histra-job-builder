@@ -242,3 +242,11 @@ def test_csharp_default_model_point_uses_highest_node_near_plan_center() -> None
     assert distance == min(
         (item.x - x_mid) ** 2 + (item.y - y_mid) ** 2 for item in top
     )
+
+
+def test_csharp_foundation_restraints_are_tagged_by_owner() -> None:
+    mesh = build_csharp_bridge_mesh(_spec())
+    tags = [restraint.foundation_tag for restraint in mesh.restraints]
+    assert tags.count("abutment_left") == 3
+    assert tags.count("pier_1") == 6
+    assert tags.count("abutment_right") == 3
