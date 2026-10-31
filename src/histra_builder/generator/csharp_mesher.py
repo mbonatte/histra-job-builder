@@ -343,13 +343,10 @@ class CSharpMesher:
         y: float,
         is_right: bool,
         heights: int,
+        hmuro: float = 0.0,
     ) -> Tuple[List[Point3D], int]:
-        # The verified straight model uses one elevation layer.  The full
-        # multi-layer branch is added in a later parity task.
-        if heights > 3:
-            raise NotImplementedError("multi-layer elevation fill is not yet ported")
-        z1 = self.spec.elevations.get_z(x1, 1)
-        z2 = self.spec.elevations.get_z(x2, 1)
+        z1 = self.spec.elevations.get_z(x1, 1, hmuro)
+        z2 = self.spec.elevations.get_z(x2, 1, hmuro)
 
         if is_right:
             extrados = Point3D(
@@ -381,8 +378,8 @@ class CSharpMesher:
 
         fill_material, _, _ = self.spec.elevations.get_material_key(1)
         upper = [
-            Point3D(extrados_points[0].x, y, self.spec.elevations.get_z(extrados_points[0].x, 1)),
-            Point3D(extrados_points[-1].x, y, self.spec.elevations.get_z(extrados_points[-1].x, 1)),
+            Point3D(extrados_points[0].x, y, self.spec.elevations.get_z(extrados_points[0].x, 1, hmuro)),
+            Point3D(extrados_points[-1].x, y, self.spec.elevations.get_z(extrados_points[-1].x, 1, hmuro)),
         ]
         n4, m4 = self._add_mesh4(
             extrados_points,
@@ -395,8 +392,8 @@ class CSharpMesher:
         side = [
             Point3D(edge_x, y, extrados.z),
             extrados,
-            Point3D(extrados.x, y, self.spec.elevations.get_z(extrados.x, 1)),
-            Point3D(edge_x, y, self.spec.elevations.get_z(edge_x, 1)),
+            Point3D(extrados.x, y, self.spec.elevations.get_z(extrados.x, 1, hmuro)),
+            Point3D(edge_x, y, self.spec.elevations.get_z(edge_x, 1, hmuro)),
         ]
         n_side = max(1, _arrotonda(min(_dist(side[0], side[1]), _dist(side[2], side[3])) / self.spec.definition.nl))
         self._add_mesh3(
@@ -407,6 +404,46 @@ class CSharpMesher:
             self.spec.definition.corsias[0].width,
             is_right,
         )
+
+        # Stack the remaining elevation layers as structured quad bands over
+        # the same extrados columns.  This is the C# ``else``/flat-layer path;
+        # curved transition triangles are a separate golden-dependent branch.
+        columns = sorted({x1, x2, *(point.x for point in extrados_points)})
+        for layer in range(2, heights + 1):
+            layer_material, _, _ = self.spec.elevations.get_material_key(layer)
+            for left_x, right_x in zip(columns, columns[1:]):
+                width = right_x - left_x
+                if abs(width) <= 1.0e-9:
+                    continue
+                bottom_left = self.spec.elevations.get_z(left_x, layer - 1, hmuro)
+                bottom_right = self.spec.elevations.get_z(right_x, layer - 1, hmuro)
+                top_left = self.spec.elevations.get_z(left_x, layer, hmuro)
+                top_right = self.spec.elevations.get_z(right_x, layer, hmuro)
+                if (
+                    top_left - bottom_left <= 1.0e-9
+                    or top_right - bottom_right <= 1.0e-9
+                ):
+                    continue
+                points = [
+                    Point3D(left_x, y, bottom_left),
+                    Point3D(right_x, y, bottom_right),
+                    Point3D(right_x, y, top_right),
+                    Point3D(left_x, y, top_left),
+                ]
+                subdivisions = max(
+                    1,
+                    _arrotonda(abs(width) / self.spec.definition.nl),
+                )
+                self._add_mesh3(
+                    points,
+                    1,
+                    subdivisions,
+                    layer_material,
+                    self.spec.definition.corsias[0].width,
+                    False,
+                    "CSharp_Fill",
+                )
+
         # C# sets span.DiscrLeft/Right from Colonne.First().N.  In the
         # non-curved AddMesh4 branch each colonna is created with N=1.
         return extrados_points, 1
@@ -507,6 +544,7 @@ class CSharpMesher:
         y: float,
         corsia_width: float,
         heights: int,
+        hmuro: float = 0.0,
     ) -> None:
         span_index = 0
         for index in range(len(abscissa) - 1):
@@ -539,7 +577,7 @@ class CSharpMesher:
                 crown_point=(params.crown_point[0], y, params.crown_point[2]),
             )
             extrados_points, columns = self._add_semi_arch(
-                span, params, x1, x2, y, is_right, heights
+                span, params, x1, x2, y, is_right, heights, hmuro
             )
             foundation_owner: Optional[int] = None
             if index == 0:
@@ -796,7 +834,9 @@ class CSharpMesher:
         centres = self._strip_centres()
         for corsia, y in zip(self.spec.definition.corsias, centres):
             heights = 4 if corsia.height > 0.0 else 3
-            self._add_bridge_row(abscissa, spans, y, corsia.width, heights)
+            self._add_bridge_row(
+                abscissa, spans, y, corsia.width, heights, corsia.height
+            )
         # C# AddSpallePile runs once after all transverse rows have been built.
         self._add_spalle_pile(centres)
         self._build_foundation_supports()
