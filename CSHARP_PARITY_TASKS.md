@@ -110,6 +110,10 @@ Golden reference for the first slice:
       is not yet emitted; it needs a native multi-layer golden to validate the
       triangle topology.
 
+19. **Asymmetric arch + 4-span chain coverage**
+    - Commit: `6ca2295`
+    - Test: `tests/test_csharp_asymmetric.py` (`S1/S2`, `Asx/Adx`, unequal spans, 3 piers, 32 GLRs/restraints).
+
 ## Remaining golden-dependent branches
 
 These are implemented only at the formula/structural level, or not at all,
@@ -122,9 +126,8 @@ because no native golden model exists in the repository:
 5. RailBridge2 / masonry walls / `BackFill` path.
 6. Full-section alignment/reinforcement/cutwater paths.
 7. Custom user-authored model points.
-8. Four-plus span / unequal-span chains.
-9. Asymmetric arch (`S1/S2`, `Asx/Adx`, `Tb1/Tb2`) parity.
-10. DB-derived template export with serialized enum names.
+8. Asymmetric arch `Tb1/Tb2`-specific behavior (basic S1/S2/Asx/Adx is covered).
+9. DB-derived template export with serialized enum names.
 
 ## Needed C# golden models
 
@@ -178,4 +181,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `135 passed, 1 skipped` (optional real-HRX gate).
+Current status: `136 passed, 1 skipped` (optional real-HRX gate).
