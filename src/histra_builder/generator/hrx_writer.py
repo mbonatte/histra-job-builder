@@ -158,6 +158,10 @@ def serialize_mesh_to_hrx(
                 "Point": pt.to_xml_str(),
                 "Name": str(n_key),
                 "IsModelPoint": "true" if n_key in model_point_node_keys else "false",
+                "LayerKey": "0",
+                "MasterElementKey": "0",
+                "MasterElementType": "None",
+                "IsPropertyModified": "false",
             },
         )
 
@@ -172,15 +176,29 @@ def serialize_mesh_to_hrx(
                 "MasterElementKey": str(nc.master_element_key),
                 "MasterElementType": nc.master_element_type,
                 "IsIndipendent": "true" if nc.is_independent else "false",
+                "LayerKey": "0",
+                "IsPropertyModified": "false",
             },
         )
-
+        afference = etree.SubElement(nc_elem, "AfferenceMatrices")
+        for _ in range(6):
+            matrix = etree.SubElement(afference, "AfferenceMatrix")
+            etree.SubElement(matrix, "Alfa")
+            etree.SubElement(matrix, "Gdl")
         masters = etree.SubElement(nc_elem, "MasterElements")
         etree.SubElement(masters, "MasterElement", Key=str(nc.node_key), Value="Node")
         slaves = etree.SubElement(nc_elem, "SlaveElements")
         for restraint in mesh.restraints:
             if nc.key in (restraint.node_c_key1, restraint.node_c_key2):
                 etree.SubElement(slaves, "SlaveElement", Key=str(restraint.key), Value="Restraint")
+        etree.SubElement(
+            nc_elem,
+            "ReferenceSystem",
+            E1="1;0;0",
+            E2="0;1;0",
+            E3="0;0;1",
+            Origin="0;0;0",
+        )
 
     # 6. Quad Finite Elements
     for q_key in sorted(mesh.quads.keys()):
@@ -225,6 +243,21 @@ def serialize_mesh_to_hrx(
                 "Normal3": k.normals[2].to_xml_str(),
                 "Normal4": k.normals[3].to_xml_str(),
                 "G": k.centroid.to_xml_str(),
+                "IsPropertyModified": "false",
+                "HeightTopVaultLoad": "0",
+                "LoadTemplateAreaKey": "0",
+                "LoadTemplateLineKey": "0",
+                "LoadTemplatePointKey": "0",
+                "LoadTemplateLinePoint1": "0;0;0",
+                "LoadTemplateLinePoint2": "0;0;0",
+                "LoadTemplatePointPoint": "0;0;0",
+                "U1": "0",
+                "U2": "0",
+                "U3": "0",
+                "U4": "0",
+                "U5": "0",
+                "U6": "0",
+                "U7": "0",
             },
         )
         etree.SubElement(
@@ -287,6 +320,7 @@ def serialize_mesh_to_hrx(
         # Quads/Restraints but does not claim geometry-wizard regeneration.
         res_elem.set("ParentKey", "0")
         res_elem.set("ParentTypeElement", "None")
+        res_elem.set("IsPropertyModified", "false")
         for direction in ("U1", "U2", "U3", "R1", "R2", "R3"):
             res_elem.set(direction+"mechBehaviourType", "Fixed")
         q = mesh.quads[res.computational_element_key]
@@ -310,6 +344,16 @@ def serialize_mesh_to_hrx(
                 "ElementType": mp.element_type,
                 "IdVertex": str(mp.id_vertex),
                 "Description": mp.description,
+                "ParentKey": "0",
+                "ParentElementKey": "0",
+                "ParentElementType": "None",
+                "Mass": "0",
+                "AnalysisKey": "0",
+                "Combination": "0",
+                "Step": "0",
+                "Ux": "0", "Uy": "0", "Uz": "0",
+                "Vx": "0", "Vy": "0", "Vz": "0",
+                "Ax": "0", "Ay": "0", "Az": "0",
                 **(
                     {"Point": point.to_xml_str()}
                     if point is not None and hasattr(point, "to_xml_str")
@@ -474,4 +518,9 @@ def serialize_mesh_to_hrx(
         states=etree.SubElement(analysis,"States")
         etree.SubElement(states,"State",Id="1",Key=analysis.get("Key"),Combination="1",Step="0",
                          State="NotExecutedNotToBeExecuted",Fo="0",Exit="NotExecuted",ExitDescription="")
+        etree.SubElement(analysis,"DynamicLoads")
+        etree.SubElement(analysis,"StageDefinitions")
+        etree.SubElement(analysis,"StageItems")
+        etree.SubElement(analysis,"AdapticPhases")
+        etree.SubElement(analysis,"PushModalSettings")
     return etree.tostring(root, xml_declaration=True, encoding="utf-8", pretty_print=pretty_print)

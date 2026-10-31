@@ -246,3 +246,29 @@ def test_csharp_writer_emits_native_model_point_and_analysis_linkage() -> None:
     vert = root.xpath("/HiStrA/Analysis[@Name='Vert']")[0]
     assert vert.get("MasterPoint") == points[0].get("Key")
     assert "Base Analysis" in vert.get("Description", "")
+
+
+def test_csharp_writer_emits_native_quad_nodec_modelpoint_attributes() -> None:
+    root = etree.fromstring(
+        generate_csharp_bridge_hrx(_spec(), include_scour_analyses=False)
+    )
+    node = root.find("Node")
+    assert node is not None
+    assert node.get("LayerKey") == "0"
+    assert node.get("IsPropertyModified") == "false"
+    quad = root.find("Quad")
+    assert quad is not None
+    assert quad.get("IsPropertyModified") == "false"
+    assert quad.get("U7") == "0"
+    node_c = root.find("NodeC")
+    assert node_c is not None
+    assert len(node_c.findall("AfferenceMatrices/AfferenceMatrix")) == 6
+    assert node_c.find("ReferenceSystem") is not None
+    model_point = root.find("ModelPoint")
+    assert model_point is not None
+    assert model_point.get("Point")
+    assert model_point.get("Ux") == "0"
+    analysis = root.find("Analysis")
+    assert analysis is not None
+    assert analysis.find("DynamicLoads") is not None
+    assert analysis.find("AdapticPhases") is not None
