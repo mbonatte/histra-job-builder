@@ -146,7 +146,7 @@ class CSharpMesher:
         self._next_quad_key = 1
         self._deck_z = 0.0
         self._total_length = 0.0
-        self._foundation_edges: List[Tuple[int, float, int, int, int, int]] = []
+        self._foundation_edges: List[Tuple[int, float, int, int, int, int, float]] = []
         self._next_glr_key = 1
         self._next_restraint_key = 1
         self._next_node_c_key = 1
@@ -546,6 +546,7 @@ class CSharpMesher:
                             pulvino_quad,
                             left_key,
                             right_key,
+                            self.spec.definition.corsias[0].width,
                         )
 
     # -- AddBridgeRow1 -------------------------------------------------------
@@ -655,6 +656,7 @@ class CSharpMesher:
                                 created[0],
                                 self._node(points[0]),
                                 self._node(points[1]),
+                                thickness,
                             )
 
                 if element.Hf > 0.0:
@@ -697,7 +699,67 @@ class CSharpMesher:
                                 created[0],
                                 self._node(points[0]),
                                 self._node(points[1]),
+                                thickness,
                             )
+
+            if element.W1f > 0.0:
+                wing_y = element.w1 + element.w2 / 2.0 + element.W1f / 2.0
+                self._add_foundation_wing(element, owner_index, wing_y, element.W1f)
+            if element.W3f > 0.0:
+                wing_y = -element.w3 - element.w2 / 2.0 - element.W3f / 2.0
+                self._add_foundation_wing(element, owner_index, wing_y, element.W3f)
+
+    def _add_foundation_wing(
+        self,
+        element: Abutment | Pier,
+        owner_index: int,
+        y: float,
+        width: float,
+    ) -> None:
+        """Port of the C# ``W1f``/``W3f`` transverse foundation blocks."""
+        if element.Hf <= 0.0:
+            return
+        centre = self._element_origin(element)
+        bottom = [
+            centre + value
+            for value in discretize_bottom_foundation_pileb2(
+                self.spec.elements, owner_index
+            )
+        ]
+        rows = max(1, _arrotonda(element.Hf / self.spec.definition.nl))
+        for column in range(len(bottom) - 1):
+            points = [
+                Point3D(bottom[column], y, -element.H - element.Hf),
+                Point3D(bottom[column + 1], y, -element.H - element.Hf),
+                Point3D(bottom[column + 1], y, -element.H),
+                Point3D(bottom[column], y, -element.H),
+            ]
+            cross = max(
+                1,
+                _arrotonda(
+                    abs(bottom[column + 1] - bottom[column])
+                    / self.spec.definition.nl
+                ),
+            )
+            created = self._add_mesh3(
+                points,
+                rows,
+                cross,
+                element.material_foundation_key,
+                width,
+                False,
+                "CSharp_Foundation",
+            )
+            if created:
+                self._record_foundation_edge(
+                    owner_index,
+                    y,
+                    column,
+                    created[0],
+                    self._node(points[0]),
+                    self._node(points[1]),
+                    width,
+                )
 
     def _default_model_point(self) -> None:
         """Port of ``ModelPointOperations.TryAddDefaultModelPoints``.
@@ -742,9 +804,10 @@ class CSharpMesher:
         quad: GeneratedQuad,
         left_node: int,
         right_node: int,
+        width: float,
     ) -> None:
         self._foundation_edges.append(
-            (owner_index, strip_y, sub_index, quad.key, left_node, right_node)
+            (owner_index, strip_y, sub_index, quad.key, left_node, right_node, width)
         )
 
     def _foundation_tag(self, owner_index: int) -> str:
@@ -768,13 +831,13 @@ class CSharpMesher:
             self._foundation_edges,
             key=lambda item: (item[0], -item[1], item[2]),
         )
-        for owner_index, strip_y, _sub, quad_key, left_key, right_key in edges:
+        for owner_index, strip_y, _sub, quad_key, left_key, right_key, width in edges:
             left = self.nodes[left_key]
             right = self.nodes[right_key]
             if right.x < left.x:
                 left_key, right_key = right_key, left_key
                 left, right = right, left
-            strip_width = self._find_strip_width(strip_y)
+            strip_width = width
             glr_key = self._next_glr_key
             self._next_glr_key += 1
             glr = GeneratedGeometryLineRestraint(
