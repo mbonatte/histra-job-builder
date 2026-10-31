@@ -16,6 +16,120 @@ from .csharp_model import (
     Span,
 )
 
+BRIDGE_DEFAULTS = {'IsWidthTopPileCustom': 'false',
+ 'VehicleLoad': '17',
+ 'VehicleLoadName': 'LineLoad-E5',
+ 'IsVehicleLoad': 'false',
+ 'VehicleLoadsNew': 'true',
+ 'NumVehicles': '1',
+ 'RoadGroupAction1': 'true',
+ 'RoadGroupAction2a': 'true',
+ 'RoadGroupAction3': 'false',
+ 'RoadGroupAction4': 'true',
+ 'FitNoAndLphiToLimitValues': 'false',
+ 'AsLeftWall': 'false',
+ 'Rilievo': '0',
+ 'Tipologia': '0',
+ 'Freccia': '300',
+ 'LengthLuceR': '600',
+ 'LengthLuceO': '600',
+ 'IsCheckBoxLuceR': 'true',
+ 'IsCheckBoxLuceO': 'false',
+ 'IsCheckBoxAngolo': 'true',
+ 'IsChkBoxPendenza': 'false',
+ 'IsChkBoxMeshL': 'false',
+ 'IsChkBoxMeshT': 'false',
+ 'DynamicCoefficientProcedure': 'RealDynamicCoefficient',
+ 'Mode': '0',
+ 'Velocity': '2777.778',
+ 'LineaType': '0',
+ 'HeightCheckVelocity': '0',
+ 'SpanLengthCheckVelocity': '0',
+ 'IsChkBoxThickBallast': 'false',
+ 'IsChkBoxHtot': 'false',
+ 'IsChkBoxLbL': 'false',
+ 'IsChkBoxAL': 'false',
+ 'IsChkBoxML': 'false',
+ 'IsCheckBoxWallLasLoad': 'false',
+ 'IsChkBoxLbR': 'false',
+ 'IsChkBoxAR': 'false',
+ 'IsChkBoxMR': 'false',
+ 'IsCheckBoxWallRasLoad': 'false'}
+ABUTMENT_DEFAULTS = {'Ischkw1': 'false',
+ 'Ischkw2': 'false',
+ 'Ischkw3': 'false',
+ 'Ischkb1': 'false',
+ 'Ischkb2': 'false',
+ 'Ischkb3': 'false',
+ 'IschkHf': 'false',
+ 'Ischkb1f': 'false',
+ 'Ischkb3f': 'false',
+ 'Ischkw1f': 'false',
+ 'Ischkw3f': 'false',
+ 'IschkAlignment': 'false',
+ 'IschkAbutmentMat': 'false',
+ 'IschkFoundationMat': 'false',
+ 'IschkHsp1': 'false',
+ 'IschkGeoMatHsp1': 'false',
+ 'IschkHsp2': 'false',
+ 'IschkGeoMatHsp2': 'false',
+ 'IschkTypRest': 'false',
+ 'IsCheckBoxBeta1': 'false',
+ 'IsCheckBoxBeta2': 'false',
+ 'Xstart': '0',
+ 'Xend': '0',
+ 'Blength': '0',
+ 'IsCheckBoxex': 'false'}
+SPAN_DEFAULTS = {'IsChkSpanL': 'false',
+ 'IsChkSpanf': 'false',
+ 'IsChkSpanTb': 'false',
+ 'IsChkSpanAlfa': 'false',
+ 'IsChkSpanS1': 'false',
+ 'IsChkSpanS2': 'false',
+ 'IsChkSpanDz': 'false',
+ 'IsChkSpanTr': 'false',
+ 'IsChkSpanMat': 'false',
+ 'IsChkSpanPMat': 'false',
+ 'IsChkSpanL1Advanced': 'false',
+ 'IsChkSpanL2Advanced': 'false',
+ 'IsChkSpanf1Advanced': 'false',
+ 'IsChkSpanf2Advanced': 'false',
+ 'IsChkSpanTbAdvanced': 'false',
+ 'IsChkSpanTb2Advanced': 'false',
+ 'IsChkSpanTtAdvanced': 'false',
+ 'IsChkSpanAlfa1Advanced': 'false',
+ 'IsChkSpanAlfa2Advanced': 'false',
+ 'IsChkSpanS1Advanced': 'false',
+ 'IsChkSpanS2Advanced': 'false',
+ 'IsChkSpanDzAdvanced': 'false',
+ 'IsChkSpanMatAdvanced': 'false',
+ 'IsChkSpanPMatAdvanced': 'false',
+ 'IsChkSpanLAdvanced': 'false',
+ 'IsChkSpanTrAdvanced': 'false',
+ 'IsChkAdvancedMode': 'false'}
+PIER_DEFAULTS = {'Ischkw1': 'false',
+ 'Ischkw2': 'false',
+ 'Ischkw3': 'false',
+ 'Ischkb1': 'false',
+ 'Ischkb2': 'false',
+ 'Ischkb3': 'false',
+ 'IschkHf': 'false',
+ 'Ischkb1f': 'false',
+ 'Ischkb3f': 'false',
+ 'Ischkw1f': 'false',
+ 'Ischkw3f': 'false',
+ 'IsCheckBoxBeta1': 'false',
+ 'IsCheckBoxBeta2': 'false',
+ 'IschkAlignment': 'false',
+ 'IschkAbutmentMat': 'false',
+ 'IschkFoundationMat': 'false',
+ 'IschkHsp1': 'false',
+ 'IschkGeoMatHsp1': 'false',
+ 'IschkHsp2': 'false',
+ 'IschkGeoMatHsp2': 'false',
+ 'IschkTypRest': 'false',
+ 'IsCheckBoxex': 'false'}
+
 
 def _s(value: object) -> str:
     if isinstance(value, bool):
@@ -31,9 +145,8 @@ def _add_children(parent: etree._Element, tag: str, item_tag: str, items: Iterab
 
 def _bridge_definition(spec: CSharpBridgeSpec) -> etree._Element:
     definition: BridgeDefinition = spec.definition
-    element = etree.Element(
-        "BridgeDefinition",
-        attrib={
+    attributes = dict(BRIDGE_DEFAULTS)
+    attributes.update({
             "Width": _s(definition.width),
             "WidthTopPile": _s(definition.width_top_pile),
             "IsWidthTopPileCustom": "false",
@@ -45,8 +158,8 @@ def _bridge_definition(spec: CSharpBridgeSpec) -> etree._Element:
             "ThicknessRiempimento": _s(definition.thickness_riempimento),
             "Zlevel": _s(definition.zlevel),
             "Origin": "0;0;0",
-        },
-    )
+    })
+    element = etree.Element("BridgeDefinition", attrib=attributes)
     _add_children(
         element,
         "Corsie",
@@ -92,13 +205,13 @@ def _bridge_definition(spec: CSharpBridgeSpec) -> etree._Element:
 
 
 def _element_attributes(element: Abutment | Pier | Span) -> dict[str, str]:
-    base = {
-        "MaterialKey": _s(element.material_key),
-        "MaterialFoundationKey": _s(getattr(element, "material_foundation_key", 0)),
-        "MaterialGeo1Key": _s(getattr(element, "material_geo1_key", 60)),
-        "MaterialGeo2Key": _s(getattr(element, "material_geo2_key", 60)),
-    }
     if isinstance(element, Span):
+        base = dict(SPAN_DEFAULTS)
+        base.update(
+            {
+                "MaterialKey": _s(element.material_key),
+            }
+        )
         base.update(
             {
                 "MaterialReinforcementKey": _s(element.material_reinforcement_key),
@@ -127,8 +240,13 @@ def _element_attributes(element: Abutment | Pier | Span) -> dict[str, str]:
         )
         return base
 
+    base = dict(ABUTMENT_DEFAULTS if isinstance(element, Abutment) else PIER_DEFAULTS)
     base.update(
         {
+            "MaterialKey": _s(element.material_key),
+            "MaterialFoundationKey": _s(getattr(element, "material_foundation_key", 0)),
+            "MaterialGeo1Key": _s(getattr(element, "material_geo1_key", 60)),
+            "MaterialGeo2Key": _s(getattr(element, "material_geo2_key", 60)),
             "H": _s(element.H),
             "Hf": _s(element.Hf),
             "b1": _s(element.b1),
@@ -152,12 +270,7 @@ def _element_attributes(element: Abutment | Pier | Span) -> dict[str, str]:
             "B3f": _s(element.B3f),
             "W1f": _s(element.W1f),
             "W3f": _s(element.W3f),
-            "Kx": _s(element.Kx),
-            "Ky": _s(element.Ky),
             "Kz": _s(element.Kz),
-            "Krx": _s(element.Krx),
-            "Kry": _s(element.Kry),
-            "Krz": _s(element.Krz),
             "IsFixDirX": _s(element.is_fix_dir_x),
             "IsFixDirY": _s(element.is_fix_dir_y),
             "IsFixDirZ": _s(element.is_fix_dir_z),
@@ -168,13 +281,22 @@ def _element_attributes(element: Abutment | Pier | Span) -> dict[str, str]:
             "SpintaPassivaDX": _s(getattr(element, "spinta_passiva_dx", False)),
             "Hsp1": _s(getattr(element, "Hsp1", 0.0)),
             "Hsp2": _s(getattr(element, "Hsp2", 0.0)),
-            "Xstart": "0",
-            "Xend": "0",
-            "Blength": "0",
         }
     )
     if isinstance(element, Abutment):
-        base["AbutmentKind"] = element.kind
+        base.update(
+            {
+                "Kx": _s(element.Kx),
+                "Ky": _s(element.Ky),
+                "Krx": _s(element.Krx),
+                "Kry": _s(element.Kry),
+                "Krz": _s(element.Krz),
+                "Xstart": "0",
+                "Xend": "0",
+                "Blength": "0",
+                "AbutmentKind": element.kind,
+            }
+        )
     if isinstance(element, Pier):
         base["PierRimpimentoCriterion"] = "IntersezioneVerticale"
         base["Tr1"] = _s(element.Tr1)

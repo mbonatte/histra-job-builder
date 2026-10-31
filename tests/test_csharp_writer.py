@@ -165,6 +165,7 @@ def test_csharp_wizard_data_matches_native_children_and_core_attributes() -> Non
     native_definition = native_wizard["bridge_definition"]
     definition = wizard.find("BridgeDefinition")
     assert definition is not None
+    assert set(definition.attrib) == set(native_definition), "BridgeDefinition attributes differ"
     for attribute in (
         "Width",
         "WidthTopPile",
@@ -195,6 +196,7 @@ def test_csharp_wizard_data_matches_native_children_and_core_attributes() -> Non
         generated = wizard.findall(tag)
         assert len(generated) == len(native_items)
         for actual, expected in zip(generated, native_items):
+            assert set(actual.attrib) == set(expected), f"{tag} attribute set differs from native"
             for attribute in ("MaterialKey", "MaterialFoundationKey"):
                 if attribute in expected:
                     assert actual.get(attribute) == expected[attribute]
