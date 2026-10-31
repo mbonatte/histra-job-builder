@@ -48,22 +48,30 @@ Golden reference for the first slice:
    - Commit: `aa03253`
    - `histra_builder.CSharpBridgeSpec`, `CSharpMesher`, `build_csharp_bridge_mesh`, `generate_csharp_bridge_hrx`.
 
-## Next tasks
+9. **Exact C# top/bottom/foundation discretization**
+   - Commit: `d94ba67`
+   - `generator/csharp_discretize.py`: `DiscretizeTopPileb2`, `DiscretizeBottomPileb2`, `DiscretizeBottomFondazionePileb2`.
+   - Ported abutment/pier shafts for `H > 0`, foundation quads/GLRs for `Hf > 0`, and exact pier column generation.
+   - Tests: `tests/test_csharp_discretize.py`, `tests/test_csharp_foundations.py`.
+
+10. **Public HRX API dispatch**
+    - Commit: `12b3feb`
+    - `generate_bridge_hrx(CSharpBridgeSpec)` now uses the C#-parity writer.
+
+11. **Native preparation defaults**
+    - Commit: `9d51501`
+    - Aligned `ToleranceNode`, `TolerancePlane`, `InterfaceImax`, `SolverParallel`, `VaultMesherQuadNumMin2` with `DefaultValues.cs`.
+
+## Deferred
 
 1. **Multi-layer elevations / BackFill**
+   - Deferred by request. Keep as a future step.
    - Port the `Nstrati=4` and `Elevations.GetMaterialKey` branches.
    - Add a native golden model with `H2/H3 > 0`.
 
-2. **Pier/abutment shafts and foundations for H > 0 / Hf > 0**
-   - Port `generatePilaSpalla` for abutment shafts.
-   - Port `DiscretizeBottomFondazionePileb2` / `generateMasonryFoundation` footing quads and GLRs.
-   - Add a native golden model with a footing.
+## Next tasks
 
-3. **Exact C# top/bottom discretization**
-   - Port `DiscretizeTopPileb2` / `DiscretizeBottomPileb2` including `Tb`, `S1/S2`, `DiscrLeft/DiscrRight`.
-   - Replace the current two-column pier shortcut.
-
-4. **Native `WizardData` parity**
+2. **Native `WizardData` parity**
    - Emit full `BridgeDefinition` children (`Corsie`, `Trunks`, `Zlevels`, `Binaries`, `MasonryBridgeWalls`).
    - Emit full `Abutment`/`Span`/`Pier` attributes.
    - Emit `<Elevations>` children + `Layer1/2/3`.
@@ -74,17 +82,14 @@ Golden reference for the first slice:
    - Load templates from the C# DB assets or a registry.
    - Add attribute-level template tests.
 
-6. **Native preparation defaults**
-   - Align `native_defaults.py` with `DefaultValues.cs` (`ToleranceNode`, `TolerancePlane`, `InterfaceImax`, `SolverParallel`, `VaultMesherQuadNumMin2`).
-
-7. **Model point parity**
+6. **Model point parity**
    - Generate the same per-span/per-pier model points as C#.
 
-8. **Default generator integration**
-   - Make `generate_bridge_hrx` use the C#-parity path.
+7. **Default generator integration**
+   - Make `generate_bridge_hrx` use the C#-parity path for all new portfolio generation.
    - Keep the old simplified `BridgeSpec` path as an explicit compatibility API if needed.
 
-9. **Portfolio / scour integration**
+8. **Portfolio / scour integration**
    - Regenerate geometry for sampled parameters (not only WizardData patches).
    - Resolve `pier_1`/fraction to concrete interface keys and emit `workflow.interface_mutations`.
 
@@ -95,4 +100,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `114 passed, 1 skipped` (optional real-HRX gate).
+Current status: `122 passed, 1 skipped` (optional real-HRX gate).
