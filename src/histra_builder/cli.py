@@ -9,6 +9,7 @@ from .importer import job_from_hrx
 from .inspector import inspect_hrx, preview_job
 from .models import JobSpec
 from .scenarios import DEFAULT_BASE_SEED, DEFAULT_JOB_COUNT, generate_random_jobs
+from .native_portfolio import generate_native_jobs
 from .templates import TemplateRegistry
 from .variants import generate_variants
 
@@ -63,6 +64,11 @@ def main() -> None:
     random_p.add_argument("--count", type=int, default=DEFAULT_JOB_COUNT)
     random_p.add_argument("--seed", type=int, default=DEFAULT_BASE_SEED)
 
+    native_p = sub.add_parser("generate-native")
+    native_p.add_argument("--output-dir", default="generated_native_jobs")
+    native_p.add_argument("--count", type=int, default=DEFAULT_JOB_COUNT)
+    native_p.add_argument("--seed", type=int, default=DEFAULT_BASE_SEED)
+
     args = parser.parse_args()
     if args.command == "compile":
         artifact = compile_job(_json(args.job), TemplateRegistry(args.registry))
@@ -90,6 +96,13 @@ def main() -> None:
     elif args.command == "generate-random":
         written = generate_random_jobs(
             args.model, output_dir=args.output_dir, count=args.count, base_seed=args.seed
+        )
+        print(json.dumps({"generated": [str(item) for item in written]}, indent=2))
+    elif args.command == "generate-native":
+        written = generate_native_jobs(
+            output_dir=args.output_dir,
+            count=args.count,
+            base_seed=args.seed,
         )
         print(json.dumps({"generated": [str(item) for item in written]}, indent=2))
 

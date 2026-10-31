@@ -29,6 +29,7 @@ from .importer import job_from_hrx
 from .inspector import HrxInspection, inspect_hrx, preview_job
 from .models import JobSpec, ModelSpec, PatchOperation, TemplateRef
 from .scenarios import generate_random_jobs
+from .native_portfolio import generate_native_jobs
 from .templates import TemplateAsset, TemplateRegistry
 from .variants import VariantDefinition, VariantSet, apply_variant, generate_variants
 
@@ -68,6 +69,7 @@ __all__ = [
     "generate_bridge_hrx",
     "generate_bridge_hrx_file",
     "generate_csharp_bridge_hrx",
+    "generate_native_jobs",
     "generate_random_jobs",
     "generate_variants",
     "inspect_hrx",
