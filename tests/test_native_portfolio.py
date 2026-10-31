@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from lxml import etree
 
 from histra_builder.native_portfolio import (
@@ -11,6 +13,9 @@ from histra_builder.native_portfolio import (
     SCOUR_MATERIAL_KEY,
     generate_native_jobs,
 )
+
+pytest.importorskip("histra", reason="install histra-python to run the solver integration tests")
+
 from histra.io.hr_loader import load_model
 from histra.preprocessing.prepare_model import prepare_model
 

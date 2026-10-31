@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+
 import pytest
 from lxml import etree
 
@@ -23,6 +24,8 @@ from histra_builder.generator import (
 )
 from histra_builder.inspector import inspect_hrx
 from histra_builder.scenarios import find_piers
+
+pytest.importorskip("histra", reason="install histra-python to run the solver integration tests")
 
 from histra.io.hr_loader import load_model
 from histra.preprocessing.prepare_model import prepare_model

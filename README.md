@@ -110,3 +110,18 @@ are invalid, or a JOB cannot compile or round-trip through JSON.
 ```
 
 Each generated document is validated as a canonical JOB before it is returned.
+
+## Tests
+
+Install the solver integration dependency and run the suite:
+
+```bash
+python -m pip install -e ".[test]"
+python -m pip install "histra-python @ git+https://github.com/mbonatte/histra-python.git@v1.2.2"
+pytest
+```
+
+The six parity/integration modules that need `histra-python` are skipped when
+that package is not installed; installing it is required for the full native
+solver round-trip coverage used by CI. `histra-python` requires Python 3.12+,
+so the Python 3.11 CI leg runs the core suite only.

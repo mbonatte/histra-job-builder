@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from collections import Counter
 
+import pytest
+
 from histra_builder.generator.csharp_mesher import build_csharp_bridge_mesh
 from histra_builder.generator.csharp_model import (
     Abutment,
@@ -15,6 +17,9 @@ from histra_builder.generator.csharp_model import (
     Span,
 )
 from histra_builder.generator.csharp_writer import generate_csharp_bridge_hrx
+
+pytest.importorskip("histra", reason="install histra-python to run the solver integration tests")
+
 from histra.io.hr_loader import load_model
 from histra.preprocessing.prepare_model import prepare_model
 

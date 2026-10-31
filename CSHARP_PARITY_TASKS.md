@@ -233,8 +233,9 @@ Please provide the following native `.hrx` files (or the C# WizardData plus a sa
 ## Verification
 
 ```bash
-PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
-  python3 -m pytest -q histra-job-builder/tests
+python -m pip install -e ".[test]"
+python -m pip install "histra-python @ git+https://github.com/mbonatte/histra-python.git@v1.2.2"
+python -m pytest -q
 ```
 
 Current status: `153 passed, 1 skipped` (optional real-HRX gate).
