@@ -22,7 +22,8 @@ def test_generated_model_has_native_startup_metadata():
         assert r.find('ReferenceSystem') is not None
         assert all(r.get(x+'mechBehaviourType')=='Fixed' for x in ['U1','U2','U3','R1','R2','R3'])
     for a in root.findall('Analysis'):
-        assert a.get('Mult')=='1' and a.get('ForceImposed')=='true'
+        expected_mult = '0' if a.get('Name') in {'Scour_1', 'Scour_2'} else '1'
+        assert a.get('Mult')==expected_mult and a.get('ForceImposed')=='true'
         assert int(a.get('ConvergenceToleranceForce'))>0
         assert int(a.get('ConvergenceToleranceMoment'))>0
         assert a.get('AdapticConvergenceCriteria')=='ForceMoment'
@@ -47,3 +48,22 @@ def test_masonry_soil_support_assignment_is_rejected():
     mesh.restraints[0].material_key=146
     with pytest.raises(ValueError,match='MasonryMaterial cannot define a foundation restraint law'):
         serialize_mesh_to_hrx(mesh)
+
+
+def test_scour_stages_do_not_reapply_gravity():
+    root = etree.fromstring(
+        generate_bridge_hrx(
+            BridgeSpec(spans=[SpanSpec(length=400.0)]),
+            include_scour_analyses=True,
+        )
+    )
+    analyses = {element.get("Name"): element for element in root.findall("Analysis")}
+    assert analyses["Vert"].get("Mult") == "1"
+    assert analyses["Scour_1"].get("Mult") == "0"
+    assert analyses["Scour_2"].get("Mult") == "0"
+    scour_items = [
+        element
+        for element in root.findall("LoadFunctionItem")
+        if element.get("loadFunctionKey") == "23"
+    ]
+    assert [item.get("multiplier") for item in scour_items] == ["0", "0"]

@@ -356,7 +356,9 @@ def serialize_mesh_to_hrx(
     if include_scour_analyses:
         etree.SubElement(root, "LoadFunction", attrib={"key": "23", "typeDiscr": "false", "DiscrVal": "0.05"})
         etree.SubElement(root, "LoadFunctionItem", attrib={"key": "3", "loadFunctionKey": "23", "pseudoTime": "0", "multiplier": "0"})
-        etree.SubElement(root, "LoadFunctionItem", attrib={"key": "4", "loadFunctionKey": "23", "pseudoTime": "1", "multiplier": "1"})
+        # C# scour stages carry Mult=0 and a flat load function: they change
+        # interface materials without reapplying gravity.
+        etree.SubElement(root, "LoadFunctionItem", attrib={"key": "4", "loadFunctionKey": "23", "pseudoTime": "1", "multiplier": "0"})
 
         etree.SubElement(root, "LoadFunction", attrib={"key": "24", "typeDiscr": "false", "DiscrVal": "0.05"})
         etree.SubElement(root, "LoadFunctionItem", attrib={"key": "5", "loadFunctionKey": "24", "pseudoTime": "0", "multiplier": "0"})
@@ -441,7 +443,11 @@ def serialize_mesh_to_hrx(
         # The convergence tolerance remains its independently authored scalar.
         analysis.set("ConvergenceToleranceForce", "1")
         analysis.set("ConvergenceToleranceMoment", "1")
-        analysis.set("Mult", "1"); analysis.set("ForceControl", "true"); analysis.set("ForceImposed", "true")
+        analysis.set(
+            "Mult",
+            "0" if analysis.get("Name") in {"Scour_1", "Scour_2"} else "1",
+        )
+        analysis.set("ForceControl", "true"); analysis.set("ForceImposed", "true")
         displacement=etree.SubElement(analysis,"DisplModelPoints")
         for mp in mesh.monitoring_points:
             etree.SubElement(displacement,"DisplModelPoint",Key=str(mp.key),Value="0")
