@@ -15,9 +15,7 @@ class Point3D:
     def to_xml_str(self) -> str:
         """Format as semicoloned string for HRX attribute."""
         def _fmt(val: float) -> str:
-            if abs(val - round(val)) < 1e-6:
-                return str(int(round(val)))
-            return f"{val:.6f}".rstrip("0").rstrip(".")
+            return format(val, ".17g")
 
         return f"{_fmt(self.x)};{_fmt(self.y)};{_fmt(self.z)}"
 
@@ -177,11 +175,6 @@ def compute_quad_kinematics(
     cosines = [max(-1.0, min(1.0, c)) for c in raw_cosines]
     sines = [math.sqrt(max(0.0, 1.0 - c * c)) for c in cosines]
 
-    # Centroid
-    gx = (p0.x + p1.x + p2.x + p3.x) / 4.0
-    gy = (p0.y + p1.y + p2.y + p3.y) / 4.0
-    gz = (p0.z + p1.z + p2.z + p3.z) / 4.0
-    centroid = Point3D(gx, gy, gz)
 
     # Reference system:
     # e1 = normalize(p1 - p0)
@@ -196,8 +189,23 @@ def compute_quad_kinematics(
     e2 = cross(e3, e1)
     ref_origin = p0
 
+    # Integrate the actual polygon centroid. The vertex average is incorrect
+    # for a distorted Quad and changes its generalized self-weight moments.
+    xy=[(-l0/2,0.),(l0/2,0.),(l0/2-l1*cos1,l1*sines[1]),(-l0/2+l3*cos0,l3*sines[0])]
+    cross_sum=0.;mx=0.;my=0.
+    for j in range(4):
+        a=xy[j]; b=xy[(j+1)%4]; value=a[0]*b[1]-b[0]*a[1]
+        cross_sum+=value;mx+=(a[0]+b[0])*value;my+=(a[1]+b[1])*value
+    if cross_sum<=0: raise ValueError("Quad polygon has nonpositive area")
+    cx=mx/(3*cross_sum);cy=my/(3*cross_sum)
+    centroid=Point3D((p0.x+p1.x)/2+cx*e1[0]+cy*e2[0],
+                     (p0.y+p1.y)/2+cx*e1[1]+cy*e2[1],
+                     (p0.z+p1.z)/2+cx*e1[2]+cy*e2[2])
+    normal=normalize(out_of_plane_normal)
+    if dot(normal,e3)<0: normal=tuple(-x for x in normal)
+    if abs(dot(normal,e3)-1)>1e-6: raise ValueError("Quad extrusion normal must align with its plane normal")
     thicknesses = [thickness] * 4
-    norm_pt = Point3D(out_of_plane_normal[0], out_of_plane_normal[1], out_of_plane_normal[2])
+    norm_pt = Point3D(*normal)
     normals = [norm_pt] * 4
 
     area = signed_area_xz(nodes)

@@ -5,6 +5,7 @@ from typing import List, Optional
 from lxml import etree
 
 from .materials import DEFAULT_TEMPLATES
+from .native_defaults import PREPARATION_DEFAULTS, LAYER_DEFAULTS, ANALYSIS_DEFAULTS
 from .mesher import GeneratedBridgeMesh
 
 
@@ -132,12 +133,11 @@ def serialize_mesh_to_hrx(
     etree.SubElement(
         root,
         "AdvancedOptionsDefault",
-        attrib={
-            "InterfaceNrow": "9",
-            "InterfaceImax": "400",
-            "MassMatrixType": "Lumped",
-        },
+        attrib=dict(PREPARATION_DEFAULTS),
     )
+
+    for attrs in LAYER_DEFAULTS:
+        etree.SubElement(root, "Layer", attrib=dict(attrs))
 
     # 3. Material Templates
     for t_dict in DEFAULT_TEMPLATES:
@@ -158,7 +158,7 @@ def serialize_mesh_to_hrx(
 
     # 5. NodeC Entities
     for nc in mesh.node_cs:
-        etree.SubElement(
+        nc_elem = etree.SubElement(
             root,
             "NodeC",
             attrib={
@@ -169,6 +169,13 @@ def serialize_mesh_to_hrx(
                 "IsIndipendent": "true" if nc.is_independent else "false",
             },
         )
+
+        masters = etree.SubElement(nc_elem, "MasterElements")
+        etree.SubElement(masters, "MasterElement", Key=str(nc.node_key), Value="Node")
+        slaves = etree.SubElement(nc_elem, "SlaveElements")
+        for restraint in mesh.restraints:
+            if nc.key in (restraint.node_c_key1, restraint.node_c_key2):
+                etree.SubElement(slaves, "SlaveElement", Key=str(restraint.key), Value="Restraint")
 
     # 6. Quad Finite Elements
     for q_key in sorted(mesh.quads.keys()):
@@ -226,9 +233,15 @@ def serialize_mesh_to_hrx(
             },
         )
 
+    # Reject unsupported support material semantics before producing a file.
+    material_types={int(t["Key"]):t.get("TypeOf", "") for t in DEFAULT_TEMPLATES}
+    for restraint in mesh.restraints:
+        if restraint.material_key>0 and "MasonryMaterial" in material_types.get(restraint.material_key, ""):
+            raise ValueError("A MasonryMaterial cannot define a foundation restraint law. "
+                             "Use MaterialKey=0 for a fixed restraint-side law; a finite soil support requires a supported geotechnical law.")
     # 7. Boundary Restraints
     for res in mesh.restraints:
-        etree.SubElement(
+        res_elem = etree.SubElement(
             root,
             "Restraint",
             attrib={
@@ -261,6 +274,23 @@ def serialize_mesh_to_hrx(
                 "MasterElementType": "None",
             },
         )
+
+        res_elem.set("Type", "Line")
+        res_elem.set("H", str(mesh.quads[res.computational_element_key].thickness))
+        # Numerical supports have no geometry parent; do not invent a missing
+        # GeometryLineRestraint key. This model can regenerate interfaces from
+        # Quads/Restraints but does not claim geometry-wizard regeneration.
+        res_elem.set("ParentKey", "0")
+        res_elem.set("ParentTypeElement", "None")
+        for direction in ("U1", "U2", "U3", "R1", "R2", "R3"):
+            res_elem.set(direction+"mechBehaviourType", "Fixed")
+        q = mesh.quads[res.computational_element_key]
+        p0 = mesh.nodes[res.node_key1]; p1 = mesh.nodes[res.node_key2]
+        from .geometry import cross, normalize
+        e1=normalize((p1.x-p0.x,p1.y-p0.y,p1.z-p0.z))
+        e3=q.kinematics.ref_e3; e2=cross(e3,e1)
+        fmt=lambda values: ";".join(format(v,".17g") for v in values)
+        etree.SubElement(res_elem, "ReferenceSystem", E1=fmt(e1), E2=fmt(e2), E3=fmt(e3), Origin=p0.to_xml_str())
 
     # 8. Monitoring ModelPoints
     for mp in mesh.monitoring_points:
@@ -404,4 +434,18 @@ def serialize_mesh_to_hrx(
         for mp in mesh.monitoring_points:
             etree.SubElement(s2_amp, "ActiveModelPoint", attrib={"Key": str(mp.key), "Value": "true"})
 
+    for analysis in root.findall("Analysis"):
+        authored=dict(analysis.attrib)
+        analysis.attrib.clear(); analysis.attrib.update(ANALYSIS_DEFAULTS); analysis.attrib.update(authored)
+        # Native ForceMoment force/moment reference properties are integers.
+        # The convergence tolerance remains its independently authored scalar.
+        analysis.set("ConvergenceToleranceForce", "1")
+        analysis.set("ConvergenceToleranceMoment", "1")
+        analysis.set("Mult", "1"); analysis.set("ForceControl", "true"); analysis.set("ForceImposed", "true")
+        displacement=etree.SubElement(analysis,"DisplModelPoints")
+        for mp in mesh.monitoring_points:
+            etree.SubElement(displacement,"DisplModelPoint",Key=str(mp.key),Value="0")
+        states=etree.SubElement(analysis,"States")
+        etree.SubElement(states,"State",Id="1",Key=analysis.get("Key"),Combination="1",Step="0",
+                         State="NotExecutedNotToBeExecuted",Fo="0",Exit="NotExecuted",ExitDescription="")
     return etree.tostring(root, xml_declaration=True, encoding="utf-8", pretty_print=pretty_print)

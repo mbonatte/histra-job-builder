@@ -53,6 +53,7 @@ def create_foundation_edge_restraint(
     thickness: float = 100.0,
     out_of_plane_normal: Tuple[float, float, float] = (0.0, 1.0, 0.0),
     foundation_tag: str = "",
+    material_key: int = 0,
 ) -> Tuple[GeneratedRestraint, int]:
     """Create a boundary Restraint and associated NodeCs for a foundation bottom Quad edge.
 
@@ -64,6 +65,9 @@ def create_foundation_edge_restraint(
     and fully fixed boundary conditions:
         k = (-1, -1, -1, -1, -1, -1)
     """
+    # MaterialKey=0 selects the native rigid restraint-side elastic law.
+    # A masonry-typed "Soil" is not a geotechnical support law and creates
+    # an uninitialised hysteretic rigid placeholder in the C# generator.
     # Obtain or create NodeC for n0
     if n0_key not in node_c_map:
         nc0_key = next_node_c_key
@@ -108,6 +112,7 @@ def create_foundation_edge_restraint(
         computational_element_key=quad_key,
         computational_element_type="Quad",
         computational_element_edge=0,
+        material_key=material_key,
         k=(-1.0, -1.0, -1.0, -1.0, -1.0, -1.0),
         g=centroid,
         point1=pt1,

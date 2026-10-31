@@ -265,8 +265,8 @@ def test_analysis_and_equilibrium_invariants() -> None:
     vert = root.xpath("/HiStrA/Analysis[@Name='Vert']")[0]
     assert vert.get("AdapticConvergenceCriteria") == "ForceMoment"
     assert float(vert.get("ConvergenceTolerance", "1.0")) <= 0.0001
-    assert float(vert.get("ConvergenceToleranceForce", "1.0")) <= 0.0001
-    assert float(vert.get("ConvergenceToleranceMoment", "1.0")) <= 0.0001
+    assert int(vert.get("ConvergenceToleranceForce")) == 1
+    assert int(vert.get("ConvergenceToleranceMoment")) == 1
 
 
 def test_generate_bridge_hrx_file(tmp_path: Path) -> None:
