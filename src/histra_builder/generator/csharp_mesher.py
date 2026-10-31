@@ -25,7 +25,7 @@ from .csharp_arch import (
     half_arch_params,
 )
 from .geometry import Point3D, compute_quad_kinematics, signed_area_xz
-from .mesher import GeneratedQuad, PierMetadata
+from .mesher import GeneratedQuad, MonitoringPoint, PierMetadata
 from .restraints import GeneratedNodeC, GeneratedRestraint
 from .csharp_discretize import (
     discretize_bottom_foundation_pileb2,
@@ -155,6 +155,7 @@ class CSharpMesher:
         self._restraints: List[GeneratedRestraint] = []
         self._node_cs: List[GeneratedNodeC] = []
         self._piers: List[PierMetadata] = []
+        self._monitoring_points: List[MonitoringPoint] = []
 
     # -- geometric primitives -------------------------------------------------
 
@@ -645,6 +646,39 @@ class CSharpMesher:
                                 self._node(points[1]),
                             )
 
+    def _default_model_point(self) -> None:
+        """Port of ``ModelPointOperations.TryAddDefaultModelPoints``.
+
+        C# selects the highest-Z structural node closest to the plan centre of
+        all nodes at that elevation.
+        """
+        if not self.nodes:
+            return
+        z_max = max(point.z for point in self.nodes.values())
+        top = [
+            (key, point)
+            for key, point in self.nodes.items()
+            if abs(point.z - z_max) <= 1.0e-9
+        ]
+        if not top:
+            return
+        x_mid = (max(point.x for _, point in top) + min(point.x for _, point in top)) / 2.0
+        y_mid = (max(point.y for _, point in top) + min(point.y for _, point in top)) / 2.0
+        key, point = min(
+            top,
+            key=lambda item: (item[1].x - x_mid) ** 2 + (item[1].y - y_mid) ** 2,
+        )
+        self._monitoring_points.append(
+            MonitoringPoint(
+                key=1,
+                element_key=key,
+                element_type="Node",
+                id_vertex=0,
+                description=f"Point in ({{X:{point.x:g} Y:{point.y:g} Z:{point.z:g}}})",
+                point=point,
+            )
+        )
+
     # -- foundation edge / GLR / Restraint generation -----------------------
 
     def _record_foundation_edge(
@@ -752,6 +786,7 @@ class CSharpMesher:
         # C# AddSpallePile runs once after all transverse rows have been built.
         self._add_spalle_pile(centres)
         self._build_foundation_supports()
+        self._default_model_point()
         for index, element in enumerate(self.spec.piers, start=1):
             centre = self._element_origin(element)
             self._piers.append(
@@ -771,7 +806,7 @@ class CSharpMesher:
             geometry_line_restraints=self._glrs,
             restraints=self._restraints,
             node_cs=self._node_cs,
-            monitoring_points=[],
+            monitoring_points=self._monitoring_points,
             piers=self._piers,
             deck_z=self._deck_z,
             total_length=self._total_length,

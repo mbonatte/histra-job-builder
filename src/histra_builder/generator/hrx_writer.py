@@ -295,6 +295,7 @@ def serialize_mesh_to_hrx(
 
     # 8. Monitoring ModelPoints
     for mp in mesh.monitoring_points:
+        point = getattr(mp, "point", None)
         etree.SubElement(
             root,
             "ModelPoint",
@@ -305,6 +306,11 @@ def serialize_mesh_to_hrx(
                 "ElementType": mp.element_type,
                 "IdVertex": str(mp.id_vertex),
                 "Description": mp.description,
+                **(
+                    {"Point": point.to_xml_str()}
+                    if point is not None and hasattr(point, "to_xml_str")
+                    else {}
+                ),
             },
         )
 

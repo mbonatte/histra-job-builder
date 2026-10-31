@@ -226,3 +226,19 @@ def test_csharp_node_c_mapping_matches_native() -> None:
     }
     actual = {node_c.key: node_c.node_key for node_c in mesh.node_cs}
     assert actual == expected
+
+
+def test_csharp_default_model_point_uses_highest_node_near_plan_center() -> None:
+    mesh = build_csharp_bridge_mesh(_spec())
+    assert len(mesh.monitoring_points) == 1
+    point = mesh.monitoring_points[0]
+    assert point.element_type == "Node"
+    node = mesh.nodes[point.element_key]
+    assert node.z == max(item.z for item in mesh.nodes.values())
+    top = [item for item in mesh.nodes.values() if item.z == node.z]
+    x_mid = (max(item.x for item in top) + min(item.x for item in top)) / 2.0
+    y_mid = (max(item.y for item in top) + min(item.y for item in top)) / 2.0
+    distance = (node.x - x_mid) ** 2 + (node.y - y_mid) ** 2
+    assert distance == min(
+        (item.x - x_mid) ** 2 + (item.y - y_mid) ** 2 for item in top
+    )
