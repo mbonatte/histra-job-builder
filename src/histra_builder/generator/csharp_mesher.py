@@ -26,6 +26,7 @@ from .csharp_arch import (
 )
 from .geometry import Point3D, compute_quad_kinematics, signed_area_xz
 from .mesher import GeneratedQuad
+from .restraints import GeneratedNodeC, GeneratedRestraint
 from .csharp_model import (
     Abutment,
     BridgeDefinition,
@@ -91,12 +92,37 @@ def _arrotonda(value: float) -> int:
 
 
 @dataclass
+class GeneratedGeometryLineRestraint:
+    """C# ``GeometryLineRestraint`` (foundation line support)."""
+
+    key: int
+    name: str
+    node_key1: int
+    node_key2: int
+    b: float
+    h: float = 30.0
+    material_key: int = 0
+    load_condition_key: int = 0
+    zg: float = 0.0
+    parent_key: int = 1
+    parent_type: str = "Bridge"
+    parent_edge: int = 0
+    alignment: str = "Center"
+    dy: float = 0.0
+    mechanical_type: str = "Foundation"
+    k: Tuple[float, ...] = (-1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+
+
+@dataclass
 class CSharpBridgeMesh:
     """Structural mesh produced by the C#-parity mesher."""
 
     spec: CSharpBridgeSpec
     nodes: Dict[int, Point3D]
     quads: Dict[int, GeneratedQuad]
+    geometry_line_restraints: List[GeneratedGeometryLineRestraint]
+    restraints: List[GeneratedRestraint]
+    node_cs: List[GeneratedNodeC]
     deck_z: float
     total_length: float
 
@@ -113,11 +139,20 @@ class CSharpMesher:
         self._next_quad_key = 1
         self._deck_z = 0.0
         self._total_length = 0.0
+        self._foundation_edges: List[Tuple[int, float, int, int, int, int]] = []
+        self._next_glr_key = 1
+        self._next_restraint_key = 1
+        self._next_node_c_key = 1
+        self._node_c_map: Dict[int, int] = {}
+        self._glrs: List[GeneratedGeometryLineRestraint] = []
+        self._restraints: List[GeneratedRestraint] = []
+        self._node_cs: List[GeneratedNodeC] = []
 
     # -- geometric primitives -------------------------------------------------
 
-    def _node(self, point: Sequence[float]) -> int:
-        key = (round(point[0], 4), round(point[1], 4), round(point[2], 4))
+    def _node(self, point) -> int:
+        px, py, pz = _xyz(point)
+        key = (round(px, 4), round(py, 4), round(pz, 4))
         existing = self._node_index.get(key)
         if existing is not None:
             return existing
@@ -371,6 +406,7 @@ class CSharpMesher:
         x2: float,
         y: float,
         is_right: bool,
+        foundation_owner: Optional[int] = None,
     ) -> None:
         lintradosso = span.L + span.S1 + span.S2
         for index in range(len(extrados_points) - 1):
@@ -423,12 +459,23 @@ class CSharpMesher:
                         Point3D(ext0.x, y, ext0.z),
                         Point3D(x1, y, ext0.z),
                     ]
-                self._quad(
+                pulvino_quad = self._quad(
                     pulvino,
                     span.material_pulvino_key,
                     self.spec.definition.corsias[0].width,
                     "CSharp_Pulvino",
                 )
+                if foundation_owner is not None:
+                    left_key = self._node((pulvino[0].x, y, pulvino[0].z))
+                    right_key = self._node((pulvino[1].x, y, pulvino[1].z))
+                    self._record_foundation_edge(
+                        foundation_owner,
+                        y,
+                        0,
+                        pulvino_quad,
+                        left_key,
+                        right_key,
+                    )
 
     # -- AddBridgeRow1 -------------------------------------------------------
 
@@ -473,7 +520,21 @@ class CSharpMesher:
             extrados_points, columns = self._add_semi_arch(
                 span, params, x1, x2, y, is_right, heights
             )
-            self._add_arch_ring(span, params, extrados_points, x1, x2, y, is_right)
+            foundation_owner: Optional[int] = None
+            if index == 0:
+                foundation_owner = 0
+            elif index == len(abscissa) - 2:
+                foundation_owner = len(self.spec.elements) - 1
+            self._add_arch_ring(
+                span,
+                params,
+                extrados_points,
+                x1,
+                x2,
+                y,
+                is_right,
+                foundation_owner,
+            )
             if is_right:
                 span.discr_right = max(1, columns)
             else:
@@ -482,7 +543,7 @@ class CSharpMesher:
     # -- AddSpallePile -------------------------------------------------------
 
     def _add_pier_shafts(self, y: float, thickness: float) -> None:
-        for element in self.spec.elements:
+        for owner_index, element in enumerate(self.spec.elements):
             if not isinstance(element, Pier) or element.H <= 0.0:
                 continue
             centre = self._element_origin(element)
@@ -500,7 +561,107 @@ class CSharpMesher:
                         Point3D(columns[column + 1], y, z_rows[row + 1]),
                         Point3D(columns[column], y, z_rows[row + 1]),
                     ]
-                    self._quad(points, element.material_key, thickness, "CSharp_Pier")
+                    quad = self._quad(points, element.material_key, thickness, "CSharp_Pier")
+                    if row == 0:
+                        self._record_foundation_edge(
+                            owner_index,
+                            y,
+                            column,
+                            quad,
+                            self._node(points[0]),
+                            self._node(points[1]),
+                        )
+
+    # -- foundation edge / GLR / Restraint generation -----------------------
+
+    def _record_foundation_edge(
+        self,
+        owner_index: int,
+        strip_y: float,
+        sub_index: int,
+        quad: GeneratedQuad,
+        left_node: int,
+        right_node: int,
+    ) -> None:
+        self._foundation_edges.append(
+            (owner_index, strip_y, sub_index, quad.key, left_node, right_node)
+        )
+
+    def _build_foundation_supports(self) -> None:
+        """Port of ``generateMasonryFoundation`` for the verified Hf=0 case."""
+        if not self._foundation_edges:
+            return
+        # C# AddSpallePile iterates data-list elements, then corsia strips
+        # (y descending), then each foundation discretization segment.
+        edges = sorted(
+            self._foundation_edges,
+            key=lambda item: (item[0], -item[1], item[2]),
+        )
+        for _owner, strip_y, _sub, quad_key, left_key, right_key in edges:
+            left = self.nodes[left_key]
+            right = self.nodes[right_key]
+            if right.x < left.x:
+                left_key, right_key = right_key, left_key
+                left, right = right, left
+            strip_width = self._find_strip_width(strip_y)
+            glr_key = self._next_glr_key
+            self._next_glr_key += 1
+            glr = GeneratedGeometryLineRestraint(
+                key=glr_key,
+                name=str(glr_key),
+                # C# passes (list[1], list[0]) to the GLR constructor.
+                node_key1=right_key,
+                node_key2=left_key,
+                b=strip_width,
+            )
+            self._glrs.append(glr)
+
+            nc_left = self._node_c(left_key)
+            nc_right = self._node_c(right_key)
+            half = strip_width / 2.0
+            point1 = Point3D(left.x, strip_y - half, left.z)
+            point2 = Point3D(right.x, strip_y - half, right.z)
+            point3 = Point3D(right.x, strip_y + half, right.z)
+            point4 = Point3D(left.x, strip_y + half, left.z)
+            restraint = GeneratedRestraint(
+                key=self._next_restraint_key,
+                name=str(self._next_restraint_key),
+                node_key1=left_key,
+                node_key2=right_key,
+                node_c_key1=nc_left,
+                node_c_key2=nc_right,
+                computational_element_key=quad_key,
+                computational_element_type="Quad",
+                computational_element_edge=0,
+                material_key=0,
+                parent_key=glr_key,
+                parent_type_element="GeometryLineRestraint",
+                k=(-1.0, -1.0, -1.0, -1.0, -1.0, -1.0),
+                g=Point3D((left.x + right.x) / 2.0, strip_y, left.z),
+                point1=point1,
+                point2=point2,
+                point3=point3,
+                point4=point4,
+            )
+            self._next_restraint_key += 1
+            self._restraints.append(restraint)
+
+    def _find_strip_width(self, strip_y: float) -> float:
+        centres = self._strip_centres()
+        for corsia, centre in zip(self.spec.definition.corsias, centres):
+            if abs(centre - strip_y) < 1.0e-6:
+                return corsia.width
+        return self.spec.definition.corsias[0].width
+
+    def _node_c(self, node_key: int) -> int:
+        existing = self._node_c_map.get(node_key)
+        if existing is not None:
+            return existing
+        key = self._next_node_c_key
+        self._next_node_c_key += 1
+        self._node_c_map[node_key] = key
+        self._node_cs.append(GeneratedNodeC(key=key, node_key=node_key))
+        return key
 
     # -- public entry point --------------------------------------------------
 
@@ -521,10 +682,14 @@ class CSharpMesher:
         # C# AddSpallePile runs once after all transverse rows have been built.
         for corsia, y in zip(self.spec.definition.corsias, centres):
             self._add_pier_shafts(y, corsia.width)
+        self._build_foundation_supports()
         return CSharpBridgeMesh(
             spec=self.spec,
             nodes=self.nodes,
             quads=self.quads,
+            geometry_line_restraints=self._glrs,
+            restraints=self._restraints,
+            node_cs=self._node_cs,
             deck_z=self._deck_z,
             total_length=self._total_length,
         )

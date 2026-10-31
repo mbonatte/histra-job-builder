@@ -5,6 +5,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+import pytest
+
 from histra_builder.generator.csharp_mesher import build_csharp_bridge_mesh
 from histra_builder.generator.csharp_model import (
     Abutment,
@@ -182,3 +184,45 @@ def test_csharp_mesh_normal_winding_matches_native() -> None:
     )
     # C# BridgeMesher flips the normal for the 12 negatively wound fill quads.
     assert normals == Counter({-1.0: 144, 1.0: 12})
+
+
+def test_csharp_foundation_line_restraints_match_native() -> None:
+    mesh = build_csharp_bridge_mesh(_spec())
+    fixture = _fixture()
+    assert len(mesh.geometry_line_restraints) == 12
+    for actual, expected in zip(mesh.geometry_line_restraints, fixture["geometry_line_restraints"]):
+        assert actual.key == int(expected["Key"])
+        assert actual.node_key1 == int(expected["NodeKey1"])
+        assert actual.node_key2 == int(expected["NodeKey2"])
+        assert actual.b == float(expected["B"])
+        assert actual.h == float(expected["H"])
+        assert actual.parent_key == int(expected["ParentKey"])
+        assert actual.parent_type == expected["ParentType"]
+
+
+def test_csharp_foundation_restraints_match_native() -> None:
+    mesh = build_csharp_bridge_mesh(_spec())
+    fixture = _fixture()
+    assert len(mesh.restraints) == 12
+    for actual, expected in zip(mesh.restraints, fixture["restraints"]):
+        assert actual.key == int(expected["Key"])
+        assert actual.parent_key == int(expected["ParentKey"])
+        assert actual.parent_type_element == expected["ParentTypeElement"]
+        assert actual.node_key1 == int(expected["NodeKey1"])
+        assert actual.node_key2 == int(expected["NodeKey2"])
+        assert actual.computational_element_key == int(expected["ComputationalElementKey"])
+        assert actual.computational_element_edge == int(expected["ComputationalElementEdge"])
+        assert actual.point1.x == pytest.approx(float(expected["Point1"].split(";")[0]), abs=2e-3)
+        assert actual.point1.y == pytest.approx(float(expected["Point1"].split(";")[1]), abs=2e-3)
+        assert actual.point1.z == pytest.approx(float(expected["Point1"].split(";")[2]), abs=2e-3)
+        assert actual.point3.y == pytest.approx(float(expected["Point3"].split(";")[1]), abs=2e-3)
+
+
+def test_csharp_node_c_mapping_matches_native() -> None:
+    mesh = build_csharp_bridge_mesh(_spec())
+    fixture = _fixture()
+    expected = {
+        int(item["key"]): int(item["node_key"]) for item in fixture["node_cs"]
+    }
+    actual = {node_c.key: node_c.node_key for node_c in mesh.node_cs}
+    assert actual == expected
