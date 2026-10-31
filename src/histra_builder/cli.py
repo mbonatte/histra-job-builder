@@ -69,6 +69,11 @@ def main() -> None:
     native_p.add_argument("--count", type=int, default=DEFAULT_JOB_COUNT)
     native_p.add_argument("--seed", type=int, default=DEFAULT_BASE_SEED)
 
+    ui_p = sub.add_parser("ui")
+    ui_p.add_argument("--host", default="127.0.0.1")
+    ui_p.add_argument("--port", type=int, default=8765)
+    ui_p.add_argument("--no-open", action="store_true", help="do not open a browser")
+
     args = parser.parse_args()
     if args.command == "compile":
         artifact = compile_job(_json(args.job), TemplateRegistry(args.registry))
@@ -105,6 +110,10 @@ def main() -> None:
             base_seed=args.seed,
         )
         print(json.dumps({"generated": [str(item) for item in written]}, indent=2))
+    elif args.command == "ui":
+        from .ui import serve
+
+        serve(args.host, args.port, open_browser=not args.no_open)
 
 
 if __name__ == "__main__":

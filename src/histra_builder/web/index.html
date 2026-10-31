@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HiStrA Bridge Builder</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark">H</span>
+      <div>
+        <h1>HiStrA Bridge Builder</h1>
+        <p>C#-parity parametric bridge editor and live mesh preview</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <label class="toggle"><input id="auto-update" type="checkbox" checked> Live update</label>
+      <button id="reset" class="btn ghost" type="button">Reset</button>
+      <button id="rebuild" class="btn" type="button">Rebuild</button>
+      <button id="export" class="btn primary" type="button">Export HRX</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Bridge</h2>
+          <span id="width-badge" class="badge">300 cm</span>
+        </div>
+        <div class="grid two">
+          <label>Mesh size Nl (cm)<input data-bind="nl" type="number" min="10" step="1"></label>
+          <label>Deck elevation H1 (cm)<input data-bind="elevation.H1" type="number" step="1"></label>
+          <label>Layer 2 H2 (cm)<input data-bind="elevation.H2" type="number" step="1"></label>
+          <label>Layer 3 H3 (cm)<input data-bind="elevation.H3" type="number" step="1"></label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Transverse strips</h2>
+          <button class="mini" data-add="strip" type="button">+ Strip</button>
+        </div>
+        <div id="strips" class="stack"></div>
+        <p class="hint">Deck width is the sum of the strip widths. Exterior strips with height &gt; 0 create spandrel walls / fourth layer.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Spans</h2>
+          <button class="mini" data-add="span" type="button">+ Span</button>
+        </div>
+        <div id="spans" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Piers</h2>
+          <span id="pier-count" class="badge">1</span>
+        </div>
+        <div id="piers" class="stack"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Abutments</h2></div>
+        <div id="abutments" class="stack"></div>
+      </section>
+    </aside>
+
+    <section class="viewport">
+      <div class="viewport-toolbar">
+        <div class="view-group">
+          <button id="view-reset" class="btn small" type="button">Fit view</button>
+          <label class="toggle"><input id="show-fill" type="checkbox" checked> Fill</label>
+          <label class="toggle"><input id="show-wire" type="checkbox" checked> Wire</label>
+          <label class="toggle"><input id="show-nodes" type="checkbox"> Nodes</label>
+          <label class="toggle"><input id="show-supports" type="checkbox" checked> Supports</label>
+        </div>
+        <div class="view-group">
+          <label class="select-label">Colors
+            <select id="color-mode">
+              <option value="material">Material</option>
+              <option value="group">Group</option>
+              <option value="depth">Depth</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="canvas"></canvas>
+        <div id="empty-state" class="empty-state">
+          <strong>No preview yet</strong>
+          <span>Adjust parameters or press Rebuild.</span>
+        </div>
+        <div id="error" class="error hidden"></div>
+        <div id="busy" class="busy hidden"><span></span> meshing…</div>
+      </div>
+      <div class="viewport-footer">
+        <div id="stats" class="stats"></div>
+        <div id="selection" class="selection">Drag to orbit · wheel to zoom</div>
+      </div>
+      <div id="legend" class="legend"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

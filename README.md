@@ -1,4 +1,4 @@
-# HiStrA Job Builder 1.1.0
+# HiStrA Job Builder 1.2.0
 
 `histra-job-builder` is the engineering boundary between canonical JOB documents and the official HiStrA `.hrx` format.
 
@@ -10,6 +10,7 @@
 - HRX inventory and geometry validation for comparison with the official HiStrA software.
 - Explicit scenario variants using JSON Pointer changes, without silently mutating the base JOB.
 - CLI commands for import, compile, inspect, preview and variant generation.
+- Interactive local web UI with live mesh preview, orbit/zoom, parameter editing and HRX export.
 
 The importer deliberately creates a no-patch JOB. Compiling that JOB returns the original HRX bytes exactly. Changes are represented as ordered XML patch operations, preserving provenance.
 
@@ -28,9 +29,48 @@ histra-builder preview-job job.json --registry ./templates --output preview.json
 histra-builder compile job.json --registry ./templates --output model.hrx
 histra-builder variants job.json variants.json --output-dir ./generated-jobs
 histra-builder generate-random model.hrx --output-dir ./generated_jobs --count 5 --seed 20260817
+histra-builder ui
 ```
 
 The same generator is available as `python -m histra_builder generate-random ...`.
+
+## Interactive bridge UI
+
+Launch the local editor:
+
+```bash
+histra-builder ui
+# or:
+python -m histra_builder ui --port 8765 --no-open
+```
+
+It serves a dependency-free browser UI at `http://127.0.0.1:8765/` and opens it
+automatically. The editor uses the same C#-parity mesher as the CLI, so the
+preview and exported HRX come from the same geometry path.
+
+The UI supports:
+
+- live editing of mesh size, elevations, transverse strips, spans, piers, footing
+  wings and abutments;
+- adding/removing spans and strips with automatic pier-count synchronisation;
+- orbit (drag), zoom (wheel) and fit-to-view controls;
+- fill/wireframe/node overlays, support (GLR/restraint) markers and material,
+  group or depth colouring;
+- one-click HRX export of the current model.
+
+HTTP endpoints used by the page:
+
+```text
+GET  /                 editor page
+GET  /api/default      starter payload
+GET  /api/health       health check
+POST /api/preview      build a JSON mesh preview
+POST /api/export       build and download the HRX
+```
+
+The browser payload is a compact JSON description of strips, spans, piers and
+abutments; `histra_builder.ui.build_preview()` and `export_hrx()` expose the same
+functions for scripted use.
 
 ## Random scour workflow jobs
 

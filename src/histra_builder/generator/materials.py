@@ -1010,3 +1010,14 @@ LEGACY_TEMPLATES = [
     SOIL_146,
     SOIL_REMOVED_147,
 ]
+
+
+def material_colors() -> dict[str, dict[str, str]]:
+    """Color/name lookup used by the interactive web preview."""
+    return {
+        str(template["Key"]): {
+            "name": template.get("Name", str(template["Key"])),
+            "color": template.get("Color", "#888888"),
+        }
+        for template in DEFAULT_TEMPLATES
+    }
