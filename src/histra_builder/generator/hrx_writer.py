@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Optional
 from lxml import etree
 
-from .materials import DEFAULT_TEMPLATES
+from .materials import DEFAULT_TEMPLATES, LEGACY_TEMPLATES
 from .native_defaults import PREPARATION_DEFAULTS, LAYER_DEFAULTS, ANALYSIS_DEFAULTS
 from .mesher import GeneratedBridgeMesh
 
@@ -13,6 +13,7 @@ def serialize_mesh_to_hrx(
     mesh: GeneratedBridgeMesh,
     include_scour_analyses: bool = True,
     pretty_print: bool = True,
+    templates=None,
 ) -> bytes:
     """Serialize a GeneratedBridgeMesh into byte-exact HRX XML conforming to HiStrA 2026.1.0."""
     spec = mesh.spec
@@ -140,7 +141,7 @@ def serialize_mesh_to_hrx(
         etree.SubElement(root, "Layer", attrib=dict(attrs))
 
     # 3. Material Templates
-    for t_dict in DEFAULT_TEMPLATES:
+    for t_dict in (templates or DEFAULT_TEMPLATES):
         etree.SubElement(root, "Template", attrib={k: str(v) for k, v in t_dict.items()})
 
     # 4. Structural Nodes
@@ -234,7 +235,7 @@ def serialize_mesh_to_hrx(
         )
 
     # Reject unsupported support material semantics before producing a file.
-    material_types={int(t["Key"]):t.get("TypeOf", "") for t in DEFAULT_TEMPLATES}
+    material_types={int(t["Key"]):t.get("TypeOf", "") for t in (templates or DEFAULT_TEMPLATES)}
     for restraint in mesh.restraints:
         if restraint.material_key>0 and "MasonryMaterial" in material_types.get(restraint.material_key, ""):
             raise ValueError("A MasonryMaterial cannot define a foundation restraint law. "

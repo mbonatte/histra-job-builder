@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Union
 
 from .hrx_writer import serialize_mesh_to_hrx
+from .materials import LEGACY_TEMPLATES
 from .mesher import BridgeMesher, GeneratedBridgeMesh, build_isolated_pier_mesh
 from .parameters import BridgeSpec, PierSpec
 
@@ -32,7 +33,11 @@ def generate_bridge_hrx(spec, include_scour_analyses: bool = True) -> bytes:
     if not isinstance(spec, BridgeSpec):
         raise TypeError(f"unsupported bridge spec: {type(spec).__name__}")
     mesh = build_bridge_mesh(spec)
-    return serialize_mesh_to_hrx(mesh, include_scour_analyses=include_scour_analyses)
+    return serialize_mesh_to_hrx(
+        mesh,
+        include_scour_analyses=include_scour_analyses,
+        templates=LEGACY_TEMPLATES,
+    )
 
 
 def generate_bridge_hrx_file(
