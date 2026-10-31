@@ -232,3 +232,17 @@ def test_csharp_wizard_data_matches_native_children_and_core_attributes() -> Non
     ]
     assert [layer.get("MaterialKey") for layer in layers] == ["19", "20", "21"]
     assert all(layer.get("GenerateComputationalElements") == "true" for layer in layers)
+
+
+def test_csharp_writer_emits_native_model_point_and_analysis_linkage() -> None:
+    root = etree.fromstring(
+        generate_csharp_bridge_hrx(_spec(), include_scour_analyses=False)
+    )
+    points = root.findall("ModelPoint")
+    assert len(points) == 1
+    assert points[0].get("ElementType") == "Node"
+    node_key = points[0].get("ElementKey")
+    assert root.xpath(f"/HiStrA/Node[@Key='{node_key}']")[0].get("IsModelPoint") == "true"
+    vert = root.xpath("/HiStrA/Analysis[@Name='Vert']")[0]
+    assert vert.get("MasterPoint") == points[0].get("Key")
+    assert "Base Analysis" in vert.get("Description", "")

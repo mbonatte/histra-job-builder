@@ -145,6 +145,9 @@ def serialize_mesh_to_hrx(
         etree.SubElement(root, "Template", attrib={k: str(v) for k, v in t_dict.items()})
 
     # 4. Structural Nodes
+    model_point_node_keys = {
+        mp.element_key for mp in mesh.monitoring_points if mp.element_type == "Node"
+    }
     for n_key in sorted(mesh.nodes.keys()):
         pt = mesh.nodes[n_key]
         etree.SubElement(
@@ -154,6 +157,7 @@ def serialize_mesh_to_hrx(
                 "Key": str(n_key),
                 "Point": pt.to_xml_str(),
                 "Name": str(n_key),
+                "IsModelPoint": "true" if n_key in model_point_node_keys else "false",
             },
         )
 
@@ -454,6 +458,15 @@ def serialize_mesh_to_hrx(
             "Mult",
             "0" if analysis.get("Name") in {"Scour_1", "Scour_2"} else "1",
         )
+        if mesh.monitoring_points:
+            analysis.set("MasterPoint", str(mesh.monitoring_points[0].key))
+        if analysis.get("Name") == "Vert":
+            analysis.set(
+                "Description",
+                "Base Analysis adopted for all analyzes derived from the seismic combination",
+            )
+        elif analysis.get("Name", "").startswith("Scour"):
+            analysis.set("Description", "Scour stage")
         analysis.set("ForceControl", "true"); analysis.set("ForceImposed", "true")
         displacement=etree.SubElement(analysis,"DisplModelPoints")
         for mp in mesh.monitoring_points:
