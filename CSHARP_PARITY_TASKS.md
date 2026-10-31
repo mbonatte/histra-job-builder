@@ -99,11 +99,32 @@ Golden reference for the first slice:
     - CLI: `histra-builder generate-native`.
     - Test: `tests/test_native_portfolio.py`.
 
-## Deferred (by request)
+## Completed (multi-layer)
 
-1. **Multi-layer elevations / BackFill**
-   - Port the `Nstrati=4` and `Elevations.GetMaterialKey` branches.
-   - Add a native golden model with `H2/H3 > 0`.
+18. **Multi-layer elevation fill**
+    - Commit: `63b2ea9`, `428b5c0`
+    - Layers 2..N are stacked as structured quad bands over the extrados columns.
+    - Added native layer materials `20` (Fill) and `21` (Concrete).
+    - Test: `tests/test_csharp_multilayer.py`.
+    - Remaining limitation: the C# `AddMesh2` curved-transition/`Vertex` branch
+      is not yet emitted; it needs a native multi-layer golden to validate the
+      triangle topology.
+
+## Remaining golden-dependent branches
+
+These are implemented only at the formula/structural level, or not at all,
+because no native golden model exists in the repository:
+
+1. Multi-layer curved transition / `AddMesh2` triangle topology.
+2. Footing golden validation (`Hf > 0`, wings, reinforcement extensions).
+3. Passive earth-pressure `SurfaceRestraint` path.
+4. Inclined/slope/curved bridge transforms.
+5. RailBridge2 / masonry walls / `BackFill` path.
+6. Full-section alignment/reinforcement/cutwater paths.
+7. Custom user-authored model points.
+8. Four-plus span / unequal-span chains.
+9. Asymmetric arch (`S1/S2`, `Asx/Adx`, `Tb1/Tb2`) parity.
+10. DB-derived template export with serialized enum names.
 
 ## Needed C# golden models
 
@@ -157,4 +178,4 @@ PYTHONPATH=/tmp/opencode/pydeps:histra-job-builder/src:histra-python \
   python3 -m pytest -q histra-job-builder/tests
 ```
 
-Current status: `133 passed, 1 skipped` (optional real-HRX gate).
+Current status: `135 passed, 1 skipped` (optional real-HRX gate).
