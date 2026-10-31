@@ -178,6 +178,7 @@ def serialize_mesh_to_hrx(
                 "IsIndipendent": "true" if nc.is_independent else "false",
                 "LayerKey": "0",
                 "IsPropertyModified": "false",
+                "Name": str(nc.key),
             },
         )
         afference = etree.SubElement(nc_elem, "AfferenceMatrices")
@@ -351,6 +352,7 @@ def serialize_mesh_to_hrx(
                 "AnalysisKey": "0",
                 "Combination": "0",
                 "Step": "0",
+                "Name": str(mp.key),
                 "Ux": "0", "Uy": "0", "Uz": "0",
                 "Vx": "0", "Vy": "0", "Vz": "0",
                 "Ax": "0", "Ay": "0", "Az": "0",
@@ -376,6 +378,12 @@ def serialize_mesh_to_hrx(
             "isMainLoad": "false",
             "isFavourable": "false",
             "isUnFavourable": "true",
+            "GammaFavEQU": "1",
+            "GammaUnfavEQU": "1",
+            "GammaFavSTR": "1",
+            "GammaUnfavSTR": "1",
+            "GammaFavGEO": "1",
+            "GammaUnfavGEO": "1",
             "Action": "1",
         },
     )

@@ -274,3 +274,21 @@ def test_csharp_writer_emits_native_quad_nodec_modelpoint_attributes() -> None:
     assert analysis is not None
     assert analysis.find("DynamicLoads") is not None
     assert analysis.find("AdapticPhases") is not None
+
+
+def test_csharp_writer_native_name_and_gamma_attributes() -> None:
+    root = etree.fromstring(
+        generate_csharp_bridge_hrx(_spec(), include_scour_analyses=False)
+    )
+    assert root.find("NodeC").get("Name") == root.find("NodeC").get("Key")
+    assert root.find("ModelPoint").get("Name") == root.find("ModelPoint").get("Key")
+    gravity = root.find("LoadCondition")
+    for attribute in (
+        "GammaFavEQU",
+        "GammaUnfavEQU",
+        "GammaFavSTR",
+        "GammaUnfavSTR",
+        "GammaFavGEO",
+        "GammaUnfavGEO",
+    ):
+        assert gravity.get(attribute) == "1"
