@@ -196,6 +196,13 @@ Useful models:
       supports now fail explicitly rather than silently generating a
       different bridge.
 
+21. **Native load and analysis schema**
+    - Emits the complete native startup schema: 11 `LoadCondition`, 12 `LoadCombination`, 32 `LoadFunction` and 64 `LoadFunctionItem` elements.
+    - Emits the 13-analysis native tree (`Vert`, `Modal_0`, `LiveLoad_1`, `scour_1`...`LiveLoad_4`) with native attributes, not-executed states and model-point links.
+    - Keeps `ForceMoment` on the three pipeline stages; the other analyses retain the native `Work` criterion.
+    - Restores native 0 -> 1 scour load functions (the zero `Mult` prevents gravity reapplication).
+    - Test: `tests/test_csharp_analyses.py` against `tests/fixtures/csharp/analyses.json`.
+
 ## Remaining golden-dependent branches
 
 These are implemented only at the formula/structural level, or not at all,

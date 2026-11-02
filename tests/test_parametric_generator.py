@@ -299,7 +299,8 @@ def test_vert_equilibrium_solve() -> None:
     sess = AnalysisSession(model)
     res = sess.run("Vert")
     assert res.outcome.value == "completed"
-    assert len(res.steps) == 20
+    # Native load function 1 uses DiscrVal=0.2, so the gravity ramp is 5 steps.
+    assert len(res.steps) == 5
 
 
 def test_conformal_topology_and_isolated_pier_solve() -> None:
@@ -381,5 +382,5 @@ def test_conformal_topology_and_isolated_pier_solve() -> None:
     p_sess = AnalysisSession(p_model)
     p_res = p_sess.run("Vert")
     assert p_res.outcome.value == "completed"
-    assert len(p_res.steps) == 20
+    assert len(p_res.steps) == 5
 

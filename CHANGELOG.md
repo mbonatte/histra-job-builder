@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 - 2026-11-02
+
+- Emit the native C# load schema: 11 load conditions, 12 load combinations, 32 load functions and 64 function items.
+- Emit the native analysis tree instead of only `Vert`, `Scour_1` and `Scour_2`: modal, live-load and additional scour analyses are included with their native attributes, states and model-point links.
+- Preserve the stricter `ForceMoment` criterion for the three pipeline stages (`Vert`, `scour_1`, `scour_2`).
+- Restore the native 0 -> 1 scour load functions; the zero stage multiplier still prevents a second gravity increment.
+- Add a native analysis/load schema regression fixture and tests.
+
 ## 1.2.0 - 2026-09-21
 
 - Add parametric bridge generator ported from C# reference implementation (`BridgeSpec`, `SpanSpec`, `PierSpec`, `AbutmentSpec`, `generate_bridge_hrx`).

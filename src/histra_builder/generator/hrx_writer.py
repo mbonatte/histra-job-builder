@@ -4,8 +4,14 @@ from __future__ import annotations
 from typing import List, Optional
 from lxml import etree
 
-from .materials import DEFAULT_TEMPLATES, LEGACY_TEMPLATES
-from .native_defaults import PREPARATION_DEFAULTS, LAYER_DEFAULTS, ANALYSIS_DEFAULTS
+from .materials import DEFAULT_TEMPLATES
+from .native_analysis import (
+    write_analyses,
+    write_load_combinations,
+    write_load_conditions,
+    write_load_functions,
+)
+from .native_defaults import PREPARATION_DEFAULTS, LAYER_DEFAULTS
 from .mesher import GeneratedBridgeMesh
 
 
@@ -364,171 +370,15 @@ def serialize_mesh_to_hrx(
             },
         )
 
-    # 9. Load Conditions
-    etree.SubElement(
+    # 9. Native load conditions, combinations and functions
+    write_load_conditions(root)
+    write_load_combinations(root)
+    write_load_functions(root)
+
+    # 10. Native analyses (Vert, Modal, live-load and scour stages)
+    write_analyses(
         root,
-        "LoadCondition",
-        attrib={
-            "Id": "1",
-            "Name": "Gravity",
-            "Description": "Self weight - G1",
-            "MassInDirX": "1",
-            "MassInDirY": "1",
-            "MassInDirZ": "1",
-            "isMainLoad": "false",
-            "isFavourable": "false",
-            "isUnFavourable": "true",
-            "GammaFavEQU": "1",
-            "GammaUnfavEQU": "1",
-            "GammaFavSTR": "1",
-            "GammaUnfavSTR": "1",
-            "GammaFavGEO": "1",
-            "GammaUnfavGEO": "1",
-            "Action": "1",
-        },
+        model_point_keys=[mp.key for mp in mesh.monitoring_points],
+        include_scour_analyses=include_scour_analyses,
     )
-
-    # 10. Load Combinations
-    lc = etree.SubElement(
-        root,
-        "LoadCombination",
-        attrib={"Key": "6", "Name": "SEISMIC", "LimitState": "Seismic"},
-    )
-    etree.SubElement(
-        lc,
-        "Item",
-        attrib={
-            "LoadCombinationKey": "6",
-            "ColumnKey": "1",
-            "RowKey": "1",
-            "Name": "1",
-            "Schema": "NoSchema",
-            "Position": "0",
-            "Combination": "1",
-            "TypeData": "Number",
-            "SecondaryTypeData": "Number",
-            "Val": "1",
-        },
-    )
-
-    # 11. Load Functions
-    etree.SubElement(root, "LoadFunction", attrib={"key": "1", "typeDiscr": "false", "DiscrVal": "0.05"})
-    etree.SubElement(root, "LoadFunctionItem", attrib={"key": "1", "loadFunctionKey": "1", "pseudoTime": "0", "multiplier": "0"})
-    etree.SubElement(root, "LoadFunctionItem", attrib={"key": "2", "loadFunctionKey": "1", "pseudoTime": "1", "multiplier": "1"})
-
-    if include_scour_analyses:
-        etree.SubElement(root, "LoadFunction", attrib={"key": "23", "typeDiscr": "false", "DiscrVal": "0.05"})
-        etree.SubElement(root, "LoadFunctionItem", attrib={"key": "3", "loadFunctionKey": "23", "pseudoTime": "0", "multiplier": "0"})
-        # C# scour stages carry Mult=0 and a flat load function: they change
-        # interface materials without reapplying gravity.
-        etree.SubElement(root, "LoadFunctionItem", attrib={"key": "4", "loadFunctionKey": "23", "pseudoTime": "1", "multiplier": "0"})
-
-        etree.SubElement(root, "LoadFunction", attrib={"key": "24", "typeDiscr": "false", "DiscrVal": "0.05"})
-        etree.SubElement(root, "LoadFunctionItem", attrib={"key": "5", "loadFunctionKey": "24", "pseudoTime": "0", "multiplier": "0"})
-        etree.SubElement(root, "LoadFunctionItem", attrib={"key": "6", "loadFunctionKey": "24", "pseudoTime": "1", "multiplier": "1"})
-
-    # 12. Analysis Configurations
-    # Strict ForceMoment equilibrium criteria enforced
-    vert_analysis = etree.SubElement(
-        root,
-        "Analysis",
-        attrib={
-            "Key": "1",
-            "Name": "Vert",
-            "AnalysisType": "2",
-            "LoadCombinationKey": "6",
-            "LoadFunctionKey": "1",
-            "InitialAnalysisKey": "-100",
-            "AdapticConvergenceCriteria": "ForceMoment",
-            "ConvergenceTolerance": "0.0001",
-            "ConvergenceToleranceForce": "0.0001",
-            "ConvergenceToleranceMoment": "0.0001",
-            "Method": "ModifiedRegulaFalsiLineSearch",
-            "IntegrationMethod": "LoadControl",
-            "TypeLoadDistribution": "LoadCombination",
-        },
-    )
-    vert_amp = etree.SubElement(vert_analysis, "ActiveModelPoints")
-    for mp in mesh.monitoring_points:
-        etree.SubElement(vert_amp, "ActiveModelPoint", attrib={"Key": str(mp.key), "Value": "true"})
-
-    if include_scour_analyses:
-        scour_1 = etree.SubElement(
-            root,
-            "Analysis",
-            attrib={
-                "Key": "23",
-                "Name": "Scour_1",
-                "AnalysisType": "2",
-                "LoadCombinationKey": "6",
-                "LoadFunctionKey": "23",
-                "InitialAnalysisKey": "1",
-                "AdapticConvergenceCriteria": "ForceMoment",
-                "ConvergenceTolerance": "0.0001",
-                "ConvergenceToleranceForce": "0.0001",
-                "ConvergenceToleranceMoment": "0.0001",
-                "Method": "ModifiedRegulaFalsiLineSearch",
-                "IntegrationMethod": "LoadControl",
-                "TypeLoadDistribution": "LoadCombination",
-            },
-        )
-        s1_amp = etree.SubElement(scour_1, "ActiveModelPoints")
-        for mp in mesh.monitoring_points:
-            etree.SubElement(s1_amp, "ActiveModelPoint", attrib={"Key": str(mp.key), "Value": "true"})
-
-        scour_2 = etree.SubElement(
-            root,
-            "Analysis",
-            attrib={
-                "Key": "24",
-                "Name": "Scour_2",
-                "AnalysisType": "2",
-                "LoadCombinationKey": "6",
-                "LoadFunctionKey": "24",
-                "InitialAnalysisKey": "23",
-                "AdapticConvergenceCriteria": "ForceMoment",
-                "ConvergenceTolerance": "0.0001",
-                "ConvergenceToleranceForce": "0.0001",
-                "ConvergenceToleranceMoment": "0.0001",
-                "Method": "ModifiedRegulaFalsiLineSearch",
-                "IntegrationMethod": "LoadControl",
-                "TypeLoadDistribution": "LoadCombination",
-            },
-        )
-        s2_amp = etree.SubElement(scour_2, "ActiveModelPoints")
-        for mp in mesh.monitoring_points:
-            etree.SubElement(s2_amp, "ActiveModelPoint", attrib={"Key": str(mp.key), "Value": "true"})
-
-    for analysis in root.findall("Analysis"):
-        authored=dict(analysis.attrib)
-        analysis.attrib.clear(); analysis.attrib.update(ANALYSIS_DEFAULTS); analysis.attrib.update(authored)
-        # Native ForceMoment force/moment reference properties are integers.
-        # The convergence tolerance remains its independently authored scalar.
-        analysis.set("ConvergenceToleranceForce", "1")
-        analysis.set("ConvergenceToleranceMoment", "1")
-        analysis.set(
-            "Mult",
-            "0" if analysis.get("Name") in {"Scour_1", "Scour_2"} else "1",
-        )
-        if mesh.monitoring_points:
-            analysis.set("MasterPoint", str(mesh.monitoring_points[0].key))
-        if analysis.get("Name") == "Vert":
-            analysis.set(
-                "Description",
-                "Base Analysis adopted for all analyzes derived from the seismic combination",
-            )
-        elif analysis.get("Name", "").startswith("Scour"):
-            analysis.set("Description", "Scour stage")
-        analysis.set("ForceControl", "true"); analysis.set("ForceImposed", "true")
-        displacement=etree.SubElement(analysis,"DisplModelPoints")
-        for mp in mesh.monitoring_points:
-            etree.SubElement(displacement,"DisplModelPoint",Key=str(mp.key),Value="0")
-        states=etree.SubElement(analysis,"States")
-        etree.SubElement(states,"State",Id="1",Key=analysis.get("Key"),Combination="1",Step="0",
-                         State="NotExecutedNotToBeExecuted",Fo="0",Exit="NotExecuted",ExitDescription="")
-        etree.SubElement(analysis,"DynamicLoads")
-        etree.SubElement(analysis,"StageDefinitions")
-        etree.SubElement(analysis,"StageItems")
-        etree.SubElement(analysis,"AdapticPhases")
-        etree.SubElement(analysis,"PushModalSettings")
     return etree.tostring(root, xml_declaration=True, encoding="utf-8", pretty_print=pretty_print)

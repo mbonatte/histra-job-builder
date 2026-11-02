@@ -22,11 +22,12 @@ def test_generated_model_has_native_startup_metadata():
         assert r.find('ReferenceSystem') is not None
         assert all(r.get(x+'mechBehaviourType')=='Fixed' for x in ['U1','U2','U3','R1','R2','R3'])
     for a in root.findall('Analysis'):
-        expected_mult = '0' if a.get('Name') in {'Scour_1', 'Scour_2'} else '1'
+        expected_mult = '0' if a.get('Name') in {'scour_1', 'scour_2', 'scour_3', 'scour_4'} else '1'
         assert a.get('Mult')==expected_mult and a.get('ForceImposed')=='true'
         assert int(a.get('ConvergenceToleranceForce'))>0
         assert int(a.get('ConvergenceToleranceMoment'))>0
-        assert a.get('AdapticConvergenceCriteria')=='ForceMoment'
+        expected_criterion = 'ForceMoment' if a.get('Name') in {'Vert', 'scour_1', 'scour_2'} else 'Work'
+        assert a.get('AdapticConvergenceCriteria')==expected_criterion
         assert a.find('States/State').get('State')=='NotExecutedNotToBeExecuted'
         assert len(a.findall('DisplModelPoints/DisplModelPoint'))==len(root.findall('ModelPoint'))
 
@@ -59,14 +60,16 @@ def test_scour_stages_do_not_reapply_gravity():
     )
     analyses = {element.get("Name"): element for element in root.findall("Analysis")}
     assert analyses["Vert"].get("Mult") == "1"
-    assert analyses["Scour_1"].get("Mult") == "0"
-    assert analyses["Scour_2"].get("Mult") == "0"
+    assert analyses["scour_1"].get("Mult") == "0"
+    assert analyses["scour_2"].get("Mult") == "0"
+    # Native scour functions ramp 0 -> 1; the stage multiplier of 0 is what
+    # prevents gravity from being applied a second time.
     scour_items = [
         element
         for element in root.findall("LoadFunctionItem")
         if element.get("loadFunctionKey") == "23"
     ]
-    assert [item.get("multiplier") for item in scour_items] == ["0", "0"]
+    assert [item.get("multiplier") for item in scour_items] == ["0", "1"]
 
 
 def test_native_preparation_defaults_match_csharp_defaultvalues():

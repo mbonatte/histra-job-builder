@@ -11,7 +11,7 @@ from .errors import InvalidJobError, PatchError
 from .models import JobSpec, PatchOperation
 from .templates import TemplateRegistry
 
-BUILDER_VERSION = "1.2.0"
+BUILDER_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True)
