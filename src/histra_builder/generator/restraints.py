@@ -32,6 +32,7 @@ class GeneratedRestraint:
     parent_key: int = 1
     parent_type_element: str = "GeometryLineRestraint"
     k: Tuple[float, float, float, float, float, float] = (-1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+    behaviours: Tuple[str, ...] = ("Fixed",) * 6
     g: Point3D = field(default_factory=lambda: Point3D(0.0, 0.0, 0.0))
     point1: Point3D = field(default_factory=lambda: Point3D(0.0, 0.0, 0.0))
     point2: Point3D = field(default_factory=lambda: Point3D(0.0, 0.0, 0.0))

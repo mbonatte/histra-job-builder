@@ -36,16 +36,16 @@ def _adjacent_widths(
 ) -> tuple[float, float, float, float, int, int]:
     """Return ``(s_left, s_right, tb_left, tb_right, discr_right, discr_left)``.
 
-    C# only adds the springer thickness when the adjacent span's springing
-    angle is zero (``Adx == 0`` for the left span, ``Asx == 0`` for the right).
+    C# checks ``Adx == 0`` on each adjacent span when deciding whether to
+    include its springer thickness, including the span to the right.
     """
     span_left = _span_before(elements, index)
     span_right = _span_after(elements, index)
 
     s_left = span_left.S2 if span_left is not None else 0.0
     s_right = span_right.S1 if span_right is not None else 0.0
-    tb_left = span_left.Tb if span_left is not None and abs(span_left.Adx) < 1.0e-9 else 0.0
-    tb_right = span_right.Tb if span_right is not None and abs(span_right.Asx) < 1.0e-9 else 0.0
+    tb_left = span_left.Tb if span_left is not None and span_left.Adx == 0.0 else 0.0
+    tb_right = span_right.Tb if span_right is not None and span_right.Adx == 0.0 else 0.0
     discr_right = max(1, span_left.discr_right) if span_left is not None else 1
     discr_left = max(1, span_right.discr_left) if span_right is not None else 1
     return s_left, s_right, tb_left, tb_right, discr_right, discr_left

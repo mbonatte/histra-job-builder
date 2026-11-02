@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import json
+import math
+from copy import deepcopy
 from collections import Counter
 from pathlib import Path
 
 import pytest
 
-from histra_builder.generator.csharp_mesher import build_csharp_bridge_mesh
+from histra_builder.generator.csharp_mesher import CSharpMesher, build_csharp_bridge_mesh
+from histra_builder.generator.geometry import Point3D
+from histra_builder.generator.csharp_writer import serialize_csharp_mesh_to_hrx
+from lxml import etree
 from histra_builder.generator.csharp_model import (
     Abutment,
     BridgeDefinition,
@@ -20,6 +25,129 @@ from histra_builder.generator.csharp_model import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "csharp" / "model_chain_2span.json"
+
+
+def test_mesh3_subdivides_each_row_across_its_width() -> None:
+    mesher = CSharpMesher(_spec())
+    points = [Point3D(0, 0, 0), Point3D(120, 0, 0),
+              Point3D(100, 0, 80), Point3D(20, 0, 80)]
+    quads = mesher._add_mesh3(points, 2, 3, 18, 30, False)
+    assert len(quads) == 6
+    for index, quad in enumerate(quads):
+        nodes = [mesher.nodes[key] for key in quad.node_keys]
+        assert nodes[0].z == nodes[1].z == (index // 3) * 40
+        assert nodes[2].z == nodes[3].z == (index // 3 + 1) * 40
+        assert nodes[1].x > nodes[0].x
+
+
+def test_foundation_support_flags_and_stiffness_match_native_mapping() -> None:
+    spec = _spec()
+    abutment = spec.abutments[0]
+    abutment.is_fix_dir_x = False
+    abutment.is_fix_dir_y = False
+    abutment.is_fix_dir_z = False
+    abutment.is_fix_rot_dir_x = False
+    abutment.is_fix_rot_dir_y = True
+    abutment.is_fix_rot_dir_z = False
+    abutment.Kz = 0.25
+    mesh = build_csharp_bridge_mesh(spec)
+    glr = mesh.geometry_line_restraints[0]
+    assert glr.behaviours == ("Free", "Fixed", "Free", "Free", "Free", "Fixed")
+    left, right = mesh.nodes[glr.node_key1], mesh.nodes[glr.node_key2]
+    assert glr.k == (0.0, pytest.approx(0.25 * glr.b * abs(left.x - right.x)),
+                     0.0, 0.0, 0.0, -1.0)
+    root = etree.fromstring(serialize_csharp_mesh_to_hrx(mesh))
+    glr_xml = root.find(f"GeometryLineRestraint[@Key='{glr.key}']")
+    restraint = next(item for item in mesh.restraints if item.parent_key == glr.key)
+    restraint_xml = root.find(f"Restraint[@Key='{restraint.key}']")
+    assert [int(item.get("Value")) for item in glr_xml.findall("RestraintKeys/RestraintKey")] == [
+        item.key for item in mesh.restraints if item.parent_key == glr.key
+    ]
+    reference = glr_xml.find("ReferenceSystem")
+    assert reference is not None
+    assert [float(v) for v in reference.get("Origin").split(";")] == pytest.approx(
+        [(left.x + right.x) / 2, (left.y + right.y) / 2, (left.z + right.z) / 2]
+    )
+    for element in (glr_xml, restraint_xml):
+        assert element is not None
+        assert element.get("U1mechBehaviourType") == "Free"
+        assert element.get("U2mechBehaviourType") == "Fixed"
+        assert float(element.get("K2")) == pytest.approx(glr.k[1])
+        assert float(element.get("Kr3")) == -1
+
+
+def test_arch_reinforcement_follows_each_intrados_segment() -> None:
+    spec = _spec()
+    spec.spans[0].Treinf = 5.0
+    spec.spans[0].material_reinforcement_key = 21
+    mesh = build_csharp_bridge_mesh(spec)
+    reinforcement = [q for q in mesh.quads.values() if q.group == "CSharp_ArchReinforcement"]
+    assert reinforcement
+    assert all(q.material_key == 21 for q in reinforcement)
+    arch = [q for q in mesh.quads.values() if q.group == "CSharp_Arch"]
+    # Each reinforcement quad shares its outer edge with an arch intrados.
+    arch_edges = [{q.node_keys[0], q.node_keys[3]} for q in arch]
+    arch_edges += [{q.node_keys[1], q.node_keys[2]} for q in arch]
+    assert all(any(edge in ({q.node_keys[0], q.node_keys[3]},
+                            {q.node_keys[1], q.node_keys[2]})
+                   for edge in arch_edges) for q in reinforcement)
+
+
+def test_straight_csharp_arch_uses_adx_for_both_halves() -> None:
+    spec = _spec()
+    changed = deepcopy(spec)
+    changed.spans[0].Asx += 10.0
+    original = build_csharp_bridge_mesh(spec)
+    actual = build_csharp_bridge_mesh(changed)
+    assert actual.nodes == original.nodes
+    assert [(q.node_keys, q.material_key) for q in actual.quads.values()] == [
+        (q.node_keys, q.material_key) for q in original.quads.values()
+    ]
+
+
+def test_longitudinal_slope_moves_mesh_and_support_geometry() -> None:
+    spec = _spec()
+    flat = build_csharp_bridge_mesh(spec)
+    spec.definition.slope = 0.01
+    graded = build_csharp_bridge_mesh(spec)
+    assert graded.nodes.keys() == flat.nodes.keys()
+    for key, point in flat.nodes.items():
+        changed = graded.nodes[key]
+        assert changed.z == pytest.approx(point.z + point.x * 0.01, abs=1e-4)
+    for restraint in graded.restraints:
+        a, b = graded.nodes[restraint.node_key1], graded.nodes[restraint.node_key2]
+        assert restraint.g.z == pytest.approx((a.z + b.z) / 2)
+        assert restraint.point1.z == a.z
+        assert restraint.point2.z == b.z
+
+
+def test_straight_inclined_strips_follow_native_skew_transform() -> None:
+    spec = _spec()
+    flat = build_csharp_bridge_mesh(spec)
+    spec.definition.inclination_angle = 15.0
+    mesh = build_csharp_bridge_mesh(spec)
+    angle = math.radians(15)
+    for key, point in flat.nodes.items():
+        assert mesh.nodes[key].x == pytest.approx(point.x + point.y * math.tan(angle), abs=1e-4)
+    for key, quad in flat.quads.items():
+        changed = mesh.quads[key]
+        assert changed.thickness == pytest.approx(quad.thickness / math.cos(angle))
+        normal = changed.kinematics.normals[0]
+        assert abs(normal.x) == pytest.approx(math.sin(angle))
+        assert abs(normal.y) == pytest.approx(math.cos(angle))
+    for glr in mesh.geometry_line_restraints:
+        assert glr.b == pytest.approx(100 / math.cos(angle))
+    for restraint in mesh.restraints:
+        assert abs(restraint.point4.x - restraint.point1.x) == pytest.approx(100 * math.tan(angle))
+        assert restraint.point4.y - restraint.point1.y == pytest.approx(100)
+
+
+def test_inclined_tapered_support_is_not_silently_exported() -> None:
+    spec = _spec()
+    spec.definition.inclination_angle = 15.0
+    spec.piers[0].w1 = 10.0
+    with pytest.raises(NotImplementedError, match="tapered or offset"):
+        build_csharp_bridge_mesh(spec)
 
 
 def _float(raw: dict, key: str, default: float = 0.0) -> float:

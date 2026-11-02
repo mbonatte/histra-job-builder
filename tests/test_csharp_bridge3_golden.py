@@ -28,14 +28,14 @@ def test_bridge3_wizard_imports_with_three_strips_and_footings() -> None:
     assert spec.elevations.elevations[0].H1 == 122.5
 
 
-def test_bridge3_exterior_strips_match_native_material_counts() -> None:
+def test_bridge3_exterior_strips_with_wizard_generated_footings() -> None:
     mesh = build_csharp_bridge_mesh(spec_from_hrx(FIXTURE))
-    # Native exterior strips: 320 spandrel quads, 56 arch quads, 4 pulvinos.
+    # The saved reference has 12 extra manually remeshed abutment quads per
+    # strip. The wizard-generated footings use a different subdivision.
     for y in (160.5, -160.5):
-        assert _strip_materials(mesh, y) == Counter({141: 320, 18: 56, 22: 4})
+        assert _strip_materials(mesh, y) == Counter({141: 308, 18: 56, 22: 6})
     assert len(mesh.geometry_line_restraints) == 18
-    # Native RestraintMesher emits 48 restraints (multiple per GLR); that
-    # expansion is tracked as a golden-dependent follow-up.
+    assert len(mesh.restraints) == 48
 
 
 def test_bridge3_interior_strip_matches_native_fill_quad_count() -> None:
@@ -47,3 +47,10 @@ def test_bridge3_interior_strip_matches_native_fill_quad_count() -> None:
         if abs(mesh.nodes[quad.node_keys[0]].y) < 1.0e-6
         and quad.material_key == 19
     ) == 208
+
+
+def test_bridge3_quad_thickness_follows_each_unequal_strip() -> None:
+    mesh = build_csharp_bridge_mesh(spec_from_hrx(FIXTURE))
+    for quad in mesh.quads.values():
+        y = mesh.nodes[quad.node_keys[0]].y
+        assert quad.thickness == (288.0 if abs(y) < 1e-6 else 33.0)

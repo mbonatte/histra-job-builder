@@ -19,13 +19,110 @@ from histra_builder.generator.csharp_model import (
     Span,
 )
 from histra_builder.generator.csharp_writer import generate_csharp_bridge_hrx
-
-pytest.importorskip("histra", reason="install histra-python to run the solver integration tests")
-
-from histra.io.hr_loader import load_model
-from histra.preprocessing.prepare_model import prepare_model
+from histra_builder.generator.csharp_import import spec_from_hrx
+from histra_builder.generator.csharp_import import spec_from_wizard_data
+from histra_builder.generator.csharp_wizard import _bridge_definition
 
 FIXTURE = Path(__file__).parent / "fixtures" / "csharp" / "model_chain_2span.json"
+
+
+def test_import_preserves_native_material_templates_on_regeneration(tmp_path: Path) -> None:
+    root = etree.fromstring(generate_csharp_bridge_hrx(_spec()))
+    template = root.find("Template[@Key='18']")
+    assert template is not None
+    template.set("Name", "Project masonry")
+    template.set("E_med", "1234")
+    path = tmp_path / "source.hrx"
+    path.write_bytes(etree.tostring(root))
+    spec = spec_from_hrx(path)
+    regenerated = etree.fromstring(generate_csharp_bridge_hrx(spec))
+    actual = regenerated.find("Template[@Key='18']")
+    assert actual is not None
+    assert actual.get("Name") == "Project masonry"
+    assert actual.get("E_med") == "1234"
+
+
+def test_streaming_import_preserves_captured_subtrees_amid_nested_results(tmp_path: Path, monkeypatch) -> None:
+    root = etree.fromstring(generate_csharp_bridge_hrx(_spec()))
+    results = etree.Element("Results")
+    for index in range(100):
+        step = etree.SubElement(results, "Step", Key=str(index))
+        for value in range(10):
+            etree.SubElement(step, "Result", Value=str(value))
+    root.insert(0, results)
+    before = etree.Element("Template", Key="301", TypeOf="HiStrA.Objects.MasonryMaterial", Name="Before")
+    root.insert(0, before)
+    etree.SubElement(root, "Template", Key="302", TypeOf="HiStrA.Objects.MasonryMaterial", Name="After")
+    nested = etree.SubElement(root, "Template", Key="303", TypeOf="HiStrA.Objects.MasonryMaterial")
+    etree.SubElement(nested, "Child")
+    path = tmp_path / "nested-results.hrx"
+    path.write_bytes(etree.tostring(root))
+
+    original_iterparse = etree.iterparse
+    cleaned = []
+
+    def checked_iterparse(*args, **kwargs):
+        for event, element in original_iterparse(*args, **kwargs):
+            yield event, element
+            if event == "end" and element.tag == "Result":
+                cleaned.append(element.getprevious() is None)
+
+    monkeypatch.setattr(etree, "iterparse", checked_iterparse)
+    spec = spec_from_hrx(path)
+    materials = {item["Key"]: item for item in spec.material_templates}
+    assert materials["301"]["Name"] == "Before"
+    assert materials["302"]["Name"] == "After"
+    assert "303" not in materials
+    assert len(spec.spans) == 2
+    assert len(spec.definition.corsias) == 3
+    assert len(cleaned) == 1000
+    assert all(cleaned)
+
+
+def test_curved_trunk_is_preserved_and_not_silently_meshed_as_straight() -> None:
+    root = etree.fromstring(generate_csharp_bridge_hrx(_spec()))
+    wizard = root.find("WizardData")
+    trunk = wizard.find("BridgeDefinition/Trunks/Trunk")
+    trunk.set("Trunk", "CurveOnLeft")
+    trunk.set("R", "2500")
+    spec = spec_from_wizard_data(wizard)
+    actual = _bridge_definition(spec).find("Trunks/Trunk")
+    assert actual.get("Trunk") == "CurveOnLeft"
+    assert actual.get("R") == "2500"
+    with pytest.raises(NotImplementedError, match="Curved"):
+        generate_csharp_bridge_hrx(spec)
+
+
+def test_railbridge2_wizard_is_recognized_and_not_silently_meshed() -> None:
+    root = etree.fromstring(generate_csharp_bridge_hrx(_spec()))
+    root.set("WizardType", "RailBridge2")
+    spec = spec_from_wizard_data(root.find("WizardData"))
+    assert spec.wizard_type == "RailBridge2"
+    with pytest.raises(NotImplementedError, match="RailBridge2"):
+        generate_csharp_bridge_hrx(spec)
+
+
+def test_import_preserves_lane_load_configuration() -> None:
+    root = etree.fromstring(generate_csharp_bridge_hrx(_spec()))
+    definition = root.find("WizardData/BridgeDefinition")
+    definition.set("IsVehicleLoad", "true")
+    definition.set("VehicleLoadName", "Custom vehicle")
+    lane = root.find("WizardData/BridgeDefinition/Corsie/Corsia")
+    lane.set("AllowVehicle", "true")
+    lane.set("LaneLoadsSchema1", "37")
+    lane.set("LaneLoadsSchema1Vehicle", "14")
+    lane.set("Description", "User lane")
+    spec = spec_from_wizard_data(root.find("WizardData"))
+    actual_definition = _bridge_definition(spec)
+    assert actual_definition.get("IsVehicleLoad") == "true"
+    assert actual_definition.get("VehicleLoadName") == "Custom vehicle"
+    actual = actual_definition.find("Corsie/Corsia")
+    assert actual.get("AllowVehicle") == "true"
+    assert actual.get("LaneLoadsSchema1") == "37"
+    assert actual.get("LaneLoadsSchema1Vehicle") == "14"
+    assert actual.get("Description") == "User lane"
+    with pytest.raises(NotImplementedError, match="vehicle-load"):
+        generate_csharp_bridge_hrx(spec)
 
 
 def _number(raw: dict, key: str, default: float = 0.0) -> float:
@@ -124,6 +221,10 @@ def test_csharp_writer_emits_native_bridge_hierarchy(tmp_path: Path) -> None:
 
 
 def test_csharp_writer_output_loads_and_prepares(tmp_path: Path) -> None:
+    pytest.importorskip("histra", reason="install histra-python to run the solver integration tests")
+    from histra.io.hr_loader import load_model
+    from histra.preprocessing.prepare_model import prepare_model
+
     path = tmp_path / "csharp_parity.hrx"
     path.write_bytes(generate_csharp_bridge_hrx(_spec(), include_scour_analyses=False))
     model = load_model(path)

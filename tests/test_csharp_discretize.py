@@ -69,3 +69,15 @@ def test_foundation_wings_and_reinforcement_extend_the_bottom_outline() -> None:
     # Reinforcement extensions are only included when Hf == 0; with a
     # foundation they are omitted and the B1f/B3f wings are added.
     assert discretize_bottom_foundation_pileb2(elements, 2) == [-40.0, -30.0, 1.0, 32.0, 44.0]
+
+
+def test_right_adjacent_span_uses_adx_for_springer_in_all_three_paths() -> None:
+    abutment = Abutment(b2=100.0)
+    span = Span(L=400.0, W=200.0, f=100.0, Asx=25.0, Adx=0.0, Tb=20.0)
+    elements = [abutment, span, Abutment(b2=100.0, kind="Destra")]
+    for discretize in (discretize_top_pileb2, discretize_bottom_pileb2,
+                       discretize_bottom_foundation_pileb2):
+        assert discretize(elements, 0) == [-50.0, 30.0, 50.0]
+        span.Asx, span.Adx = 0.0, 25.0
+        assert discretize(elements, 0) == [-50.0, 50.0]
+        span.Asx, span.Adx = 25.0, 0.0

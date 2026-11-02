@@ -18,6 +18,7 @@ from .csharp_mesher import CSharpBridgeMesh, build_csharp_bridge_mesh
 from .csharp_model import CSharpBridgeSpec
 from .hrx_writer import serialize_mesh_to_hrx
 from .csharp_wizard import replace_wizard_data
+from .materials import DEFAULT_TEMPLATES
 
 
 def _key_list(parent: etree._Element, tag: str, item_tag: str, keys) -> None:
@@ -101,9 +102,20 @@ def _add_geometry_line_restraints(root: etree._Element, mesh: CSharpBridgeMesh) 
             },
         )
         for index, direction in enumerate(("U1", "U2", "U3", "R1", "R2", "R3"), start=1):
-            element.set(f"{direction}mechBehaviourType", "Fixed")
+            element.set(f"{direction}mechBehaviourType", glr.behaviours[index - 1])
             stiffness = "K" if index <= 3 else "Kr"
-            element.set(f"{stiffness}{index if index <= 3 else index - 3}", "-1")
+            element.set(f"{stiffness}{index if index <= 3 else index - 3}", format(glr.k[index - 1], ".17g"))
+        children = [restraint for restraint in mesh.restraints if restraint.parent_key == glr.key]
+        _key_list(element, "RestraintKeys", "RestraintKey", (item.key for item in children))
+        if children:
+            child = root.find(f"Restraint[@Key='{children[0].key}']/ReferenceSystem")
+            if child is not None:
+                node1, node2 = mesh.nodes[glr.node_key1], mesh.nodes[glr.node_key2]
+                attrs = dict(child.attrib)
+                attrs["Origin"] = _format_vector(((node1.x + node2.x) / 2,
+                                                  (node1.y + node2.y) / 2,
+                                                  (node1.z + node2.z) / 2))
+                etree.SubElement(element, "ReferenceSystem", attrib=attrs)
 
 
 def _reparent_restraints(root: etree._Element, mesh: CSharpBridgeMesh) -> None:
@@ -119,6 +131,10 @@ def _reparent_restraints(root: etree._Element, mesh: CSharpBridgeMesh) -> None:
         element.set("H", format(glr.h, ".17g"))
         element.set("LoadConditionKey", str(glr.load_condition_key))
         element.set("MechanicalType", glr.mechanical_type)
+        for index, direction in enumerate(("U1", "U2", "U3", "R1", "R2", "R3")):
+            element.set(f"{direction}mechBehaviourType", restraint.behaviours[index])
+            stiffness = "K" if index < 3 else "Kr"
+            element.set(f"{stiffness}{index + 1 if index < 3 else index - 2}", format(restraint.k[index], ".17g"))
 
 
 def serialize_csharp_mesh_to_hrx(
@@ -126,14 +142,27 @@ def serialize_csharp_mesh_to_hrx(
     *,
     include_scour_analyses: bool = True,
     pretty_print: bool = True,
+    templates: list[dict[str, str]] | None = None,
 ) -> bytes:
     """Write a native-style HRX for a C#-parity mesh."""
+    if templates is None:
+        by_key = {int(template["Key"]): template for template in DEFAULT_TEMPLATES}
+        by_key.update({int(template["Key"]): template for template in mesh.spec.material_templates})
+        material_templates = list(by_key.values())
+    else:
+        material_templates = templates
+    available = {int(template["Key"]) for template in material_templates}
+    missing = sorted({quad.material_key for quad in mesh.quads.values()} - available)
+    if missing:
+        raise ValueError(f"Missing material templates for quad keys: {missing}")
     raw = serialize_mesh_to_hrx(
         mesh,  # type: ignore[arg-type]
         include_scour_analyses=include_scour_analyses,
         pretty_print=False,
+        templates=material_templates,
     )
     root = etree.fromstring(raw)
+    root.set("WizardType", mesh.spec.wizard_type)
     replace_wizard_data(root, mesh.spec)
     _add_bridge_element(root, mesh)
     _add_geometry_line_restraints(root, mesh)
@@ -151,10 +180,12 @@ def generate_csharp_bridge_hrx(
     *,
     include_scour_analyses: bool = True,
     pretty_print: bool = True,
+    templates: list[dict[str, str]] | None = None,
 ) -> bytes:
     mesh = build_csharp_bridge_mesh(spec)
     return serialize_csharp_mesh_to_hrx(
         mesh,
         include_scour_analyses=include_scour_analyses,
         pretty_print=pretty_print,
+        templates=templates,
     )

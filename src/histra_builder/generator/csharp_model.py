@@ -23,6 +23,7 @@ class Corsia:
     height: float = 0.0
     material_key: int = 0
     name: str = "lane"
+    attributes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -214,6 +215,10 @@ class Elevations:
     layer1_generate: bool = True
     layer2_generate: bool = True
     layer3_generate: bool = True
+    layer1_uniform: bool = True
+    layer2_uniform: bool = True
+    layer3_uniform: bool = True
+    is_stratigraphy_variable: bool = False
 
     def get_z(self, x: float, layer: int, hmuro: float = 0.0, add_slope: bool = False) -> float:
         """Port of ``Elevations.GetZ`` with linear interpolation by X."""
@@ -236,25 +241,18 @@ class Elevations:
 
     def get_material_key(self, layer: int) -> Tuple[int, int, int]:
         """Return ``(material_key1, material_key2, row_index)`` for a layer."""
-        if layer == 1:
-            return (
-                self.layer1_material_key,
-                self.layer1_material_key2,
-                self.layer1_row_index,
-            )
-        if layer == 2:
-            return (
-                self.layer2_material_key,
-                self.layer2_material_key2,
-                self.layer2_row_index,
-            )
-        if layer == 3 or layer == 4:
-            return (
-                self.layer3_material_key,
-                self.layer3_material_key2,
-                self.layer3_row_index,
-            )
-        return (-1, -1, -1)
+        if layer not in (1, 2, 3, 4):
+            return (-1, -1, -1)
+        index = min(layer, 3)
+        first = getattr(self, f"layer{index}_material_key")
+        second = getattr(self, f"layer{index}_material_key2")
+        uniform = getattr(self, f"layer{index}_uniform")
+        if layer == 4:
+            value = first if uniform else second
+            return (value, value, -1)
+        if uniform:
+            return (first, first, -1)
+        return (first, second, getattr(self, f"layer{index}_row_index"))
 
     def generates_layer(self, layer: int) -> bool:
         if layer == 1:
@@ -280,6 +278,8 @@ class BridgeDefinition:
     thickness_ballast: float = 0.0
     thickness_riempimento: float = 0.0
     corsias: List[Corsia] = field(default_factory=list)
+    trunks: List[dict[str, str]] = field(default_factory=list)
+    attributes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -289,6 +289,8 @@ class CSharpBridgeSpec:
     definition: BridgeDefinition
     elements: Sequence[object]
     elevations: Elevations = field(default_factory=Elevations)
+    material_templates: List[dict[str, str]] = field(default_factory=list)
+    wizard_type: str = "RailBridge"
 
     def __post_init__(self) -> None:
         self.elements = tuple(self.elements)

@@ -139,6 +139,7 @@ def compute_quad_kinematics(
     nodes: Sequence[Point3D],
     thickness: float = 100.0,
     out_of_plane_normal: Tuple[float, float, float] = (0.0, 1.0, 0.0),
+    allow_skew_normal: bool = False,
 ) -> QuadKinematics:
     """Compute all geometric parameters for a 4-node quadrilateral element.
 
@@ -203,7 +204,7 @@ def compute_quad_kinematics(
                      (p0.z+p1.z)/2+cx*e1[2]+cy*e2[2])
     normal=normalize(out_of_plane_normal)
     if dot(normal,e3)<0: normal=tuple(-x for x in normal)
-    if abs(dot(normal,e3)-1)>1e-6: raise ValueError("Quad extrusion normal must align with its plane normal")
+    if not allow_skew_normal and abs(dot(normal,e3)-1)>1e-6: raise ValueError("Quad extrusion normal must align with its plane normal")
     thicknesses = [thickness] * 4
     norm_pt = Point3D(*normal)
     normals = [norm_pt] * 4

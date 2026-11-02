@@ -143,13 +143,27 @@ def _add_children(parent: etree._Element, tag: str, item_tag: str, items: Iterab
         etree.SubElement(container, item_tag, attrib={key: _s(value) for key, value in attrs.items()})
 
 
+def _corsia_attributes(corsia, index: int) -> dict:
+    attributes = {
+        "Key": index, "Name": corsia.name, "Description": corsia.name,
+        "Width": corsia.width, "Height": corsia.height, "AllowVehicle": "false",
+        "MaterialKey": corsia.material_key, "LaneLoadsSchema1": 0,
+        "LaneLoadsSchema1Vehicle": 0, "LaneLoadsSchema2": 0,
+        "LaneLoadsSchema3": 0, "LaneLoadsSchema4": 0, "LaneLoadsSchema5": 0,
+    }
+    attributes.update(corsia.attributes)
+    attributes.update(Name=corsia.name, Width=corsia.width, Height=corsia.height,
+                      MaterialKey=corsia.material_key)
+    return attributes
+
+
 def _bridge_definition(spec: CSharpBridgeSpec) -> etree._Element:
     definition: BridgeDefinition = spec.definition
     attributes = dict(BRIDGE_DEFAULTS)
+    attributes.update(definition.attributes)
     attributes.update({
             "Width": _s(definition.width),
             "WidthTopPile": _s(definition.width_top_pile),
-            "IsWidthTopPileCustom": "false",
             "Nl": _s(definition.nl),
             "Nt": _s(definition.nt),
             "InclinationAngle": _s(definition.inclination_angle),
@@ -157,37 +171,20 @@ def _bridge_definition(spec: CSharpBridgeSpec) -> etree._Element:
             "ThicknessBallast": _s(definition.thickness_ballast),
             "ThicknessRiempimento": _s(definition.thickness_riempimento),
             "Zlevel": _s(definition.zlevel),
-            "Origin": "0;0;0",
     })
+    attributes.setdefault("Origin", "0;0;0")
     element = etree.Element("BridgeDefinition", attrib=attributes)
     _add_children(
         element,
         "Corsie",
         "Corsia",
-        [
-            {
-                "Key": index,
-                "Name": corsia.name,
-                "Description": corsia.name,
-                "Width": corsia.width,
-                "Height": corsia.height,
-                "AllowVehicle": "false",
-                "MaterialKey": corsia.material_key,
-                "LaneLoadsSchema1": 0,
-                "LaneLoadsSchema1Vehicle": 0,
-                "LaneLoadsSchema2": 0,
-                "LaneLoadsSchema3": 0,
-                "LaneLoadsSchema4": 0,
-                "LaneLoadsSchema5": 0,
-            }
-            for index, corsia in enumerate(definition.corsias)
-        ],
+        [_corsia_attributes(corsia, index) for index, corsia in enumerate(definition.corsias)],
     )
     _add_children(
         element,
         "Trunks",
         "Trunk",
-        [
+        definition.trunks or [
             {
                 "Id": 1,
                 "Key": 1,
@@ -305,7 +302,7 @@ def _element_attributes(element: Abutment | Pier | Span) -> dict[str, str]:
 
 
 def _elevations(elevations: Elevations) -> etree._Element:
-    element = etree.Element("Elevations", attrib={"IsStratigraphyVariable": "false"})
+    element = etree.Element("Elevations", attrib={"IsStratigraphyVariable": _s(elevations.is_stratigraphy_variable)})
     sections = etree.SubElement(element, "Elevations")
     for section in elevations.elevations:
         etree.SubElement(
@@ -318,25 +315,28 @@ def _elevations(elevations: Elevations) -> etree._Element:
                 "H3": _s(section.H3),
             },
         )
-    for index, (material1, material2, row_index, generate) in enumerate(
+    for index, (material1, material2, row_index, generate, uniform) in enumerate(
         (
             (
                 elevations.layer1_material_key,
                 elevations.layer1_material_key2,
                 elevations.layer1_row_index,
                 elevations.layer1_generate,
+                elevations.layer1_uniform,
             ),
             (
                 elevations.layer2_material_key,
                 elevations.layer2_material_key2,
                 elevations.layer2_row_index,
                 elevations.layer2_generate,
+                elevations.layer2_uniform,
             ),
             (
                 elevations.layer3_material_key,
                 elevations.layer3_material_key2,
                 elevations.layer3_row_index,
                 elevations.layer3_generate,
+                elevations.layer3_uniform,
             ),
         ),
         start=1,
@@ -347,7 +347,7 @@ def _elevations(elevations: Elevations) -> etree._Element:
             attrib={
                 "MaterialKey": _s(material1),
                 "MaterialKey2": _s(material2),
-                "UniformMaterial": "true",
+                "UniformMaterial": _s(uniform),
                 "RowIndexMaterial": _s(row_index),
                 "GenerateComputationalElements": _s(generate),
             },

@@ -22,9 +22,15 @@ Useful models:
   - Exterior strips have `Height=17` -> `Nstrati=4`.
   - Abutments have `Hf=92` footings.
   - Native: 1088 quads, 18 GLRs, 48 restraints.
-  - Our current exterior strips match exactly: `141:320, 18:56, 22:4`.
-  - Known deltas: interior foundation quads (`60` native vs `48` generated),
-    and restraint expansion (`48` native vs `18` direct-GLR restraints).
+  - The wizard-generated exterior strips have `141:308, 18:56, 22:6`;
+    the saved, edited reference has 12 additional material-141 quads and
+    two fewer material-22 pulvinos per strip.
+  - Foundation restraints now match the native count (48 from 18 GLRs).
+  - The saved model has remeshed abutment regions: 48 footing quads use
+    different column boundaries, and 12 additional quads lie above the
+    footing. Its abutment GLRs have keys 16–21 and width 50 rather than the
+    wizard lane widths. These saved edits do not establish the wizard's
+    original generated topology; treat them as a separate comparison.
   - Fixture: `tests/fixtures/csharp/bridge3_abutment_wizard.hrx`.
   - Test: `tests/test_csharp_bridge3_golden.py`.
 
@@ -35,9 +41,10 @@ Useful models:
   - Our generated mesh now matches exactly at the quad/material/GLR level:
     `2520` quads, `96` GLRs, material counts
     `19:1664, 18:448, 141:360, 22:48`, and the two ±156.5 wing strips.
-  - Known delta: native emits 136 restraints because `RestraintMesher` splits
-    some GLRs across multiple foundation quads; the builder still emits one
-    restraint per GLR (`96`).
+  - The builder now also emits 136 restraints across the 96 GLRs. All saved
+    restraint footprints and all 2520 quad geometries and thicknesses match
+    at 0.1 cm precision, with matching material keys. General
+    intersection and exact serialized restraint parity remain unverified.
   - Fixture: `tests/fixtures/csharp/bridge_scour_3d_wizard.hrx`.
   - Test: `tests/test_csharp_scour3d_golden.py`.
 
@@ -151,7 +158,43 @@ Useful models:
 
 19. **Asymmetric arch + 4-span chain coverage**
     - Commit: `6ca2295`
-    - Test: `tests/test_csharp_asymmetric.py` (`S1/S2`, `Asx/Adx`, unequal spans, 3 piers, 32 GLRs/restraints).
+    - Test: `tests/test_csharp_asymmetric.py` (`S1/S2`, unequal spans,
+      3 piers). The straight C# `AddBridgeRow1` uses `Adx` for both halves;
+      independent `Asx` behavior is not implied by this test.
+
+20. **Straight support and reinforcement fixes**
+    - Subdivide `AddMesh3` rows across their width and segment aligned support
+      lines across the resulting bottom quad edges.
+    - Preserve each lane's width in arch, fill and pulvino quads; use the
+      native `Adx` check for both adjacent-span discretizers.
+    - Map foundation fixity flags and `Kz` to native restraint attributes.
+      The current `histra-python` solver rejects free or elastic restraint
+      DOFs during preparation, even though the builder now preserves them.
+    - Generate rectangular shaft reinforcement and arch reinforcement;
+      preserve their material keys on import. Export requires templates for
+      all generated quad materials, including reinforcement materials.
+    - These paths are based on the C# source; native golden geometry and
+      solver validation of the reinforcement cases are still needed.
+    - Ported longitudinal slope as `z += x * slope` and preserved the
+      layer generation and uniform/nonuniform material settings. The flat
+      layer paths have tests; curved transitions still need native goldens.
+    - Ported the straight, untapered strip inclination transform, extrusion
+      normals, widths, and support footprints. The generated example loads
+      and prepares in the solver; native geometry and tapered-edge behavior
+      still need verification.
+    - Restored native material-template attributes on HRX import and export.
+      Fixed extra subdivisions in elevated exterior bands: all 914 saved
+      `Bridge_1` quad geometries and thicknesses now match at 0.1 cm precision.
+      Four saved quads have material changes not present in their WizardData.
+    - Added native GLR restraint-key lists and reference systems to export.
+      The regenerated scour model loads and prepares with 136 restraint
+      interfaces in `histra-python`.
+    - `Bridge.H` now uses the highest Z3 elevation, as in `Bridge.Init`.
+    - Preserve imported bridge-definition and lane attributes, variable
+      stratigraphy, and trunk data. Curved trunks, passive pressure,
+      RailBridge2, enabled wizard vehicle loads, and inclined tapered
+      supports now fail explicitly rather than silently generating a
+      different bridge.
 
 ## Remaining golden-dependent branches
 
@@ -159,16 +202,20 @@ These are implemented only at the formula/structural level, or not at all,
 because no native golden model exists in the repository:
 
 1. Multi-layer curved transition / `AddMesh2` triangle topology.
-2. Footing edge cases beyond `Bridge_3_abutment`: foundation wings
-   (`B1f/B3f/W1f/W3f`), reinforcement extensions, and footing restraint
-   expansion/segmentation.
+2. Footing edge cases beyond the supplied models: triangular reinforcement
+   (`Vertex` elements), and general restraint intersections outside aligned
+   foundation edges.
 3. Passive earth-pressure `SurfaceRestraint` path.
-4. Inclined/slope/curved bridge transforms.
+4. Inclined tapered-edge and curved bridge transforms; native validation of
+   the straight inclination and slope paths.
 5. RailBridge2 / masonry walls / `BackFill` path.
 6. Full-section alignment/reinforcement/cutwater paths.
 7. Custom user-authored model points.
-8. Asymmetric arch `Tb1/Tb2`-specific behavior (basic S1/S2/Asx/Adx is covered).
+8. Asymmetric arch `Tb1/Tb2`-specific behavior and native coverage of the
+   C# path's `Adx` treatment.
 9. DB-derived template export with serialized enum names.
+10. Native vehicle and lane-load generation. Wizard attributes are preserved,
+    but the builder does not yet recreate all C# traffic-load behavior.
 
 ## Needed C# golden models
 
@@ -217,14 +264,14 @@ Please provide the following native `.hrx` files (or the C# WizardData plus a sa
 
 ## Known deltas exposed by `histral_models`
 
-1. **Restraint expansion**: native models combine foundation columns into a
-   single GLR and then `RestraintMesher` emits one restraint per intersected
-   quad (e.g. `Bridge_3_abutment`: 48 restraints from 18 GLRs;
-   `Bridge_scour_3d`: 136 restraints from 96 GLRs). The current builder emits
-   one restraint per GLR.
-2. **Abutment foundation discretization**: native interior-strip foundation
-   produces 60 quads vs 48 in the current builder (`DiscrLeft/DiscrRight` and
-   `WidthBottom`/GLR `B` handling for abutment footings need refinement).
+1. **Restraint expansion**: aligned, subdivided foundation edges now emit one
+   restraint per quad. Counts match both supplied models (`Bridge_3_abutment`:
+   48 from 18 GLRs; `Bridge_scour_3d`: 136 from 96 GLRs). General geometric
+   intersections and exact native restraint fields still need verification.
+2. **Saved abutment modifications**: the saved `Bridge_3_abutment` has 48
+   footing quads with different column boundaries plus 12 quads above them,
+   and edited abutment support widths. Establish which edits must be
+   preserved when importing an existing model versus regenerating a wizard.
 3. **Project-specific material keys**: native uses custom templates `141`
    (Spandrel), `152` (Backfill_Arch), and `147` (Backfill_Load). The structural
    exterior strips match, but the interior fill material keys differ from the

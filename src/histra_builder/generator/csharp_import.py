@@ -61,6 +61,8 @@ def _abutment(raw: dict) -> Abutment:
         TreinfBotLeft=_f(raw, "TreinfBotLeft"),
         TreinfTopRight=_f(raw, "TreinfTopRight"),
         TreinfBotRight=_f(raw, "TreinfBotRight"),
+        material_reinforcement_left_key=_i(raw, "MaterialReinforcementLeftKey", 24),
+        material_reinforcement_right_key=_i(raw, "MaterialReinforcementRightKey", 24),
         Kx=_f(raw, "Kx"),
         Ky=_f(raw, "Ky"),
         Kz=_f(raw, "Kz", 0.1),
@@ -108,6 +110,8 @@ def _pier(raw: dict) -> Pier:
         TreinfBotLeft=_f(raw, "TreinfBotLeft"),
         TreinfTopRight=_f(raw, "TreinfTopRight"),
         TreinfBotRight=_f(raw, "TreinfBotRight"),
+        material_reinforcement_left_key=_i(raw, "MaterialReinforcementLeftKey", 24),
+        material_reinforcement_right_key=_i(raw, "MaterialReinforcementRightKey", 24),
         Kx=_f(raw, "Kx"),
         Ky=_f(raw, "Ky"),
         Kz=_f(raw, "Kz", 0.1),
@@ -182,9 +186,13 @@ def _elevations(raw: etree._Element | None) -> Elevations:
         layer1_row_index=_i(attrs[1], "RowIndexMaterial", 1),
         layer2_row_index=_i(attrs[2], "RowIndexMaterial", 1),
         layer3_row_index=_i(attrs[3], "RowIndexMaterial", 1),
+        layer1_uniform=_b(attrs[1], "UniformMaterial", True),
+        layer2_uniform=_b(attrs[2], "UniformMaterial", True),
+        layer3_uniform=_b(attrs[3], "UniformMaterial", True),
         layer1_generate=_b(attrs[1], "GenerateComputationalElements", True),
         layer2_generate=_b(attrs[2], "GenerateComputationalElements", True),
         layer3_generate=_b(attrs[3], "GenerateComputationalElements", True),
+        is_stratigraphy_variable=_b(raw.attrib, "IsStratigraphyVariable"),
     )
 
 
@@ -200,6 +208,7 @@ def spec_from_wizard_data(wizard: etree._Element) -> CSharpBridgeSpec:
             height=_f(corsia.attrib, "Height"),
             material_key=_i(corsia.attrib, "MaterialKey"),
             name=corsia.attrib.get("Name", "lane"),
+            attributes=dict(corsia.attrib),
         )
         for corsia in definition_element.findall("Corsie/Corsia")
     ]
@@ -223,18 +232,52 @@ def spec_from_wizard_data(wizard: etree._Element) -> CSharpBridgeSpec:
             thickness_ballast=_f(raw, "ThicknessBallast"),
             thickness_riempimento=_f(raw, "ThicknessRiempimento"),
             corsias=corsias,
+            trunks=[dict(trunk.attrib) for trunk in definition_element.findall("Trunks/Trunk")],
+            attributes=raw,
         ),
         elements=elements,
         elevations=_elevations(wizard.find("Elevations")),
+        wizard_type=(wizard.getparent().get("WizardType", "RailBridge")
+                     if wizard.getparent() is not None else "RailBridge"),
     )
 
 
 def spec_from_hrx(path) -> CSharpBridgeSpec:
-    """Read only ``WizardData`` from a native HRX file."""
-    context = etree.iterparse(str(path), events=("end",), huge_tree=True)
-    for _, element in context:
-        if element.tag == "WizardData":
+    """Read wizard input and leaf material templates from a native HRX file."""
+    context = etree.iterparse(str(path), events=("start", "end"), huge_tree=True)
+    spec = None
+    templates = []
+    wizard = None
+    template = None
+    template_has_children = False
+    for event, element in context:
+        parent = element.getparent()
+        if event == "start":
+            if wizard is None and parent is not None and parent.tag == "HiStrA":
+                if element.tag == "WizardData":
+                    wizard = element
+                elif element.tag == "Template":
+                    template = element
+                    template_has_children = False
+            elif template is not None and parent is template:
+                template_has_children = True
+            continue
+        if wizard is not None:
+            if element is not wizard:
+                continue
             spec = spec_from_wizard_data(element)
-            element.clear()
-            return spec
-    raise ValueError(f"{path} has no WizardData")
+            wizard = None
+        elif element is template:
+            if ("Material" in element.get("TypeOf", "") and not template_has_children
+                  and element.get("Key") is not None):
+                templates.append(dict(element.attrib))
+            template = None
+        if parent is None:
+            continue
+        element.clear()
+        while element.getprevious() is not None:
+            del parent[0]
+    if spec is None:
+        raise ValueError(f"{path} has no WizardData")
+    spec.material_templates = templates
+    return spec

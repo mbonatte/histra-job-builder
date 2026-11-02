@@ -27,6 +27,7 @@ from .csharp_arch import (
 from .geometry import Point3D, compute_quad_kinematics, signed_area_xz
 from .mesher import GeneratedQuad, MonitoringPoint, PierMetadata
 from .restraints import GeneratedNodeC, GeneratedRestraint
+from .materials import DEFAULT_TEMPLATES
 from .csharp_discretize import (
     discretize_bottom_foundation_pileb2,
     discretize_bottom_pileb2,
@@ -116,6 +117,7 @@ class GeneratedGeometryLineRestraint:
     dy: float = 0.0
     mechanical_type: str = "Foundation"
     k: Tuple[float, ...] = (-1.0, -1.0, -1.0, -1.0, -1.0, -1.0)
+    behaviours: Tuple[str, ...] = ("Fixed",) * 6
 
 
 @dataclass
@@ -146,7 +148,7 @@ class CSharpMesher:
         self._next_quad_key = 1
         self._deck_z = 0.0
         self._total_length = 0.0
-        self._foundation_edges: List[Tuple[int, float, int, int, int, int, float]] = []
+        self._foundation_edges: List[Tuple[int, float, int, List[GeneratedQuad], int, int, float]] = []
         self._next_glr_key = 1
         self._next_restraint_key = 1
         self._next_node_c_key = 1
@@ -248,6 +250,9 @@ class CSharpMesher:
         material_key: int,
         thickness: float,
         is_right: bool,
+        generate: bool = True,
+        material_key2: Optional[int] = None,
+        row_index_material: int = -1,
     ) -> Tuple[int, int]:
         value = _normalise(_sub(points2[1], points2[0]))
         denominator = _dot(value, _sub(points1[-1], points1[0]))
@@ -257,6 +262,9 @@ class CSharpMesher:
         first_gap = _dist(points1[0], points2[0])
         last_gap = _dist(points1[-1], points2[-1])
         m = max(1, _arrotonda(max(first_gap, last_gap) / self.spec.definition.nl))
+
+        if not generate:
+            return n, m
 
         for i in range(n):
             a: List[Point3D] = [None, None, None, None]  # type: ignore[list-item]
@@ -287,7 +295,9 @@ class CSharpMesher:
                         _lerp(a[1], a[2], (j + 1) / m),
                         _lerp(a[0], a[3], (j + 1) / m),
                     ]
-                self._quad(points, material_key, thickness, "CSharp_Fill")
+                material = (material_key2 if material_key2 is not None and
+                            j >= row_index_material else material_key)
+                self._quad(points, material, thickness, "CSharp_Fill")
         return n, m
 
     def _add_mesh3(
@@ -299,6 +309,8 @@ class CSharpMesher:
         thickness: float,
         is_right: bool,
         group: str = "CSharp_Fill",
+        material_key2: Optional[int] = None,
+        row_index_material: int = -1,
     ) -> List[GeneratedQuad]:
         created: List[GeneratedQuad] = []
         for i in range(n):
@@ -320,12 +332,13 @@ class CSharpMesher:
                 created.append(
                     self._quad(
                         [
-                            _lerp(a[0], a[3], j / m),
-                            _lerp(a[1], a[2], j / m),
-                            _lerp(a[1], a[2], (j + 1) / m),
-                            _lerp(a[0], a[3], (j + 1) / m),
+                            _lerp(a[0], a[1], j / m),
+                            _lerp(a[0], a[1], (j + 1) / m),
+                            _lerp(a[3], a[2], (j + 1) / m),
+                            _lerp(a[3], a[2], j / m),
                         ],
-                        material_key,
+                        (material_key2 if material_key2 is not None and
+                         i >= row_index_material else material_key),
                         thickness,
                         group,
                     )
@@ -343,6 +356,7 @@ class CSharpMesher:
         y: float,
         is_right: bool,
         heights: int,
+        strip_width: float,
         hmuro: float = 0.0,
         fill_material_override: int = 0,
     ) -> Tuple[List[Point3D], int]:
@@ -377,9 +391,10 @@ class CSharpMesher:
         )
         extrados_points = [Point3D(p[0], y, p[2]) for p in extrados_points]
 
-        fill_material, _, _ = self.spec.elevations.get_material_key(1)
+        fill_material, fill_material2, row_index = self.spec.elevations.get_material_key(1)
         if fill_material_override > 0:
             fill_material = fill_material_override
+            fill_material2 = fill_material_override
         upper = [
             Point3D(extrados_points[0].x, y, self.spec.elevations.get_z(extrados_points[0].x, 1, hmuro)),
             Point3D(extrados_points[-1].x, y, self.spec.elevations.get_z(extrados_points[-1].x, 1, hmuro)),
@@ -388,8 +403,11 @@ class CSharpMesher:
             extrados_points,
             upper,
             fill_material,
-            self.spec.definition.corsias[0].width,
+            strip_width,
             is_right,
+            self.spec.elevations.generates_layer(1),
+            fill_material2,
+            row_index,
         )
 
         side = [
@@ -399,23 +417,29 @@ class CSharpMesher:
             Point3D(edge_x, y, self.spec.elevations.get_z(edge_x, 1, hmuro)),
         ]
         n_side = max(1, _arrotonda(min(_dist(side[0], side[1]), _dist(side[2], side[3])) / self.spec.definition.nl))
-        self._add_mesh3(
-            side,
-            m4,
-            n_side,
-            fill_material,
-            self.spec.definition.corsias[0].width,
-            is_right,
-        )
+        if self.spec.elevations.generates_layer(1):
+            self._add_mesh3(
+                side,
+                m4,
+                n_side,
+                fill_material,
+                strip_width,
+                is_right,
+                material_key2=fill_material2,
+                row_index_material=row_index,
+            )
 
         # Stack the remaining elevation layers as structured quad bands over
         # the same extrados columns.  This is the C# ``else``/flat-layer path;
         # curved transition triangles are a separate golden-dependent branch.
         columns = sorted({x1, x2, *(point.x for point in extrados_points)})
         for layer in range(2, heights + 1):
-            layer_material, _, _ = self.spec.elevations.get_material_key(layer)
+            if not self.spec.elevations.generates_layer(layer):
+                continue
+            layer_material, layer_material2, row_index = self.spec.elevations.get_material_key(layer)
             if fill_material_override > 0:
                 layer_material = fill_material_override
+                layer_material2 = fill_material_override
             for left_x, right_x in zip(columns, columns[1:]):
                 width = right_x - left_x
                 if abs(width) <= 1.0e-9:
@@ -435,18 +459,21 @@ class CSharpMesher:
                     Point3D(right_x, y, top_right),
                     Point3D(left_x, y, top_left),
                 ]
-                subdivisions = max(
-                    1,
-                    _arrotonda(abs(width) / self.spec.definition.nl),
-                )
+                # AddMesh4 records one column per arc segment. Only the
+                # springing-side block uses its independently calculated N.
+                side_min, side_max = sorted((edge_x, extrados_points[0].x))
+                is_side = abs(left_x - side_min) < 1.0e-6 and abs(right_x - side_max) < 1.0e-6
+                subdivisions = n_side if is_side else 1
                 self._add_mesh3(
                     points,
                     1,
                     subdivisions,
                     layer_material,
-                    self.spec.definition.corsias[0].width,
+                    strip_width,
                     False,
                     "CSharp_Fill",
+                    layer_material2,
+                    row_index,
                 )
 
         # C# sets span.DiscrLeft/Right from Colonne.First().N.  In the
@@ -464,6 +491,7 @@ class CSharpMesher:
         x2: float,
         y: float,
         is_right: bool,
+        strip_width: float,
         foundation_owner: Optional[int] = None,
     ) -> None:
         lintradosso = span.L + span.S1 + span.S2
@@ -500,44 +528,54 @@ class CSharpMesher:
                 points = [int0, ext0, ext1, int1]
             else:
                 points = [ext0, int0, int1, ext1]
-            self._quad(points, span.material_key, self.spec.definition.corsias[0].width, "CSharp_Arch")
+            self._quad(points, span.material_key, strip_width, "CSharp_Arch")
 
-            if index == 0 and abs(span.Asx if not is_right else span.Adx) > 1.0e-9:
-                suppress_pulvino = False
-                if foundation_owner is not None:
-                    owner = self.spec.elements[foundation_owner]
-                    # Native Bridge_3 uses foundation-only abutments (H = 0,
-                    # Hf > 0) and does not emit a springing pulvino there.
-                    # A footing under an abutment with a real shaft still
-                    # needs the block that closes the arch-to-shaft junction.
-                    suppress_pulvino = (
-                        isinstance(owner, Abutment)
-                        and owner.Hf > 0.0
-                        and owner.H <= 1.0e-9
-                    )
-                if suppress_pulvino:
-                    continue
+            if span.Treinf > 0.0:
+                inner0 = get_intradosso_arch_ellipse(
+                    (int0.x, int0.y, int0.z), params.center, params.rx, params.rz,
+                    span.Treinf, span.Treinf, params.theta0,
+                )
+                inner1 = get_intradosso_arch_ellipse(
+                    (int1.x, int1.y, int1.z), params.center, params.rx, params.rz,
+                    span.Treinf, span.Treinf, params.theta0,
+                )
+                inner0 = Point3D(inner0[0], y, inner0[2])
+                inner1 = Point3D(inner1[0], y, inner1[2])
+                reinforcement = ([inner0, int0, int1, inner1] if is_right else
+                                 [int0, inner0, inner1, int1])
+                self._quad(reinforcement, span.material_reinforcement_key,
+                           strip_width, "CSharp_ArchReinforcement")
+
+            if index == 0 and math.radians(span.Adx) > 1.0e-4:
+                # The native pulvino is constructed from the last arch quad,
+                # which is the reinforcement quad when one is present.
+                if span.Treinf > 0.0:
+                    ext0, int0 = int0, inner0
                 if is_right:
                     pulvino = [
-                        Point3D(int0.x, y, 0.0),
-                        Point3D(x2, y, 0.0),
+                        Point3D(int0.x, y, int0.z),
+                        Point3D(x2, y, int0.z),
                         Point3D(x2, y, ext0.z),
                         Point3D(ext0.x, y, ext0.z),
                     ]
                 else:
                     pulvino = [
-                        Point3D(x1, y, 0.0),
-                        Point3D(int0.x, y, 0.0),
+                        Point3D(x1, y, int0.z),
+                        Point3D(int0.x, y, int0.z),
                         Point3D(ext0.x, y, ext0.z),
                         Point3D(x1, y, ext0.z),
                     ]
-                pulvino_quad = self._quad(
+                rows = _arrotonda(abs(pulvino[3].z - pulvino[0].z) / self.spec.definition.nl)
+                pulvinos = self._add_mesh3(
                     pulvino,
+                    rows,
+                    1,
                     span.material_pulvino_key,
-                    self.spec.definition.corsias[0].width,
+                    strip_width,
+                    False,
                     "CSharp_Pulvino",
                 )
-                if foundation_owner is not None:
+                if foundation_owner is not None and pulvinos:
                     owner = self.spec.elements[foundation_owner]
                     if (
                         getattr(owner, "H", 0.0) <= 0.0
@@ -549,10 +587,10 @@ class CSharpMesher:
                             foundation_owner,
                             y,
                             0,
-                            pulvino_quad,
+                            pulvinos[0],
                             left_key,
                             right_key,
-                            self.spec.definition.corsias[0].width,
+                            strip_width,
                         )
 
     # -- AddBridgeRow1 -------------------------------------------------------
@@ -582,7 +620,7 @@ class CSharpMesher:
                 span.L,
                 span.Tb,
                 span.Tt,
-                span.Adx if is_right else span.Asx,
+                span.Adx,
                 span.S1,
                 span.S2,
                 span.Dz,
@@ -598,7 +636,7 @@ class CSharpMesher:
                 crown_point=(params.crown_point[0], y, params.crown_point[2]),
             )
             extrados_points, columns = self._add_semi_arch(
-                span, params, x1, x2, y, is_right, heights, hmuro,
+                span, params, x1, x2, y, is_right, heights, corsia_width, hmuro,
                 fill_material_override,
             )
             foundation_owner: Optional[int] = None
@@ -614,6 +652,7 @@ class CSharpMesher:
                 x2,
                 y,
                 is_right,
+                corsia_width,
                 foundation_owner,
             )
             if is_right:
@@ -659,10 +698,51 @@ class CSharpMesher:
                                 owner_index,
                                 y,
                                 column,
-                                created[0],
+                                created[:cross],
                                 self._node(points[0]),
                                 self._node(points[1]),
                                 thickness,
+                            )
+
+                    # generatePilaSpalla adds reinforcement blocks alongside
+                    # the shaft independently of its main discretization.
+                    for is_left, enabled, top_extension, bottom_extension, material in (
+                        (True, element.is_reinf_left, element.TreinfTopLeft,
+                         element.TreinfBotLeft, element.material_reinforcement_left_key),
+                        (False, element.is_reinf_right, element.TreinfTopRight,
+                         element.TreinfBotRight, element.material_reinforcement_right_key),
+                    ):
+                        if not enabled:
+                            continue
+                        if top_extension == 0.0 and bottom_extension == 0.0:
+                            continue
+                        if top_extension <= 0.0 or bottom_extension <= 0.0:
+                            raise NotImplementedError(
+                                "A triangular reinforcement needs C# Vertex meshing"
+                            )
+                        if is_left:
+                            bottom_inner = centre - element.b2 / 2.0 - element.b1
+                            top_inner = centre - element.b2 / 2.0
+                            xs = (bottom_inner - bottom_extension, bottom_inner,
+                                  top_inner, top_inner - top_extension)
+                        else:
+                            bottom_inner = centre + element.b2 / 2.0 + element.b3
+                            top_inner = centre + element.b2 / 2.0
+                            xs = (bottom_inner, bottom_inner + bottom_extension,
+                                  top_inner + top_extension, top_inner)
+                        points = [Point3D(xs[0], y, -element.H),
+                                  Point3D(xs[1], y, -element.H),
+                                  Point3D(xs[2], y, 0.0),
+                                  Point3D(xs[3], y, 0.0)]
+                        created = self._add_mesh3(
+                            points, rows, 1, material, thickness, False,
+                            "CSharp_Reinforcement",
+                        )
+                        if element.Hf <= 0.0 and bottom_extension > 0.0 and created:
+                            self._record_foundation_edge(
+                                owner_index, y, -1 if is_left else columns,
+                                created[:1], self._node(points[0]),
+                                self._node(points[1]), thickness,
                             )
 
                 if element.Hf > 0.0:
@@ -702,7 +782,7 @@ class CSharpMesher:
                                 owner_index,
                                 y,
                                 column,
-                                created[0],
+                                created[:cross],
                                 self._node(points[0]),
                                 self._node(points[1]),
                                 thickness,
@@ -761,7 +841,7 @@ class CSharpMesher:
                     owner_index,
                     y,
                     column,
-                    created[0],
+                    created[:cross],
                     self._node(points[0]),
                     self._node(points[1]),
                     width,
@@ -807,13 +887,13 @@ class CSharpMesher:
         owner_index: int,
         strip_y: float,
         sub_index: int,
-        quad: GeneratedQuad,
+        quad: GeneratedQuad | List[GeneratedQuad],
         left_node: int,
         right_node: int,
         width: float,
     ) -> None:
         self._foundation_edges.append(
-            (owner_index, strip_y, sub_index, quad.key, left_node, right_node, width)
+            (owner_index, strip_y, sub_index, quad if isinstance(quad, list) else [quad], left_node, right_node, width)
         )
 
     def _foundation_tag(self, owner_index: int) -> str:
@@ -830,20 +910,31 @@ class CSharpMesher:
         return ""
 
     def _build_foundation_supports(self) -> None:
-        """Port of ``generateMasonryFoundation`` for the verified Hf=0 case."""
+        """Create supports for the straight, aligned foundation edges we generate."""
         if not self._foundation_edges:
             return
         edges = sorted(
             self._foundation_edges,
             key=lambda item: (item[0], -item[1], item[2]),
         )
-        for owner_index, strip_y, _sub, quad_key, left_key, right_key, width in edges:
+        for owner_index, strip_y, _sub, quads, left_key, right_key, width in edges:
             left = self.nodes[left_key]
             right = self.nodes[right_key]
             if right.x < left.x:
                 left_key, right_key = right_key, left_key
                 left, right = right, left
             strip_width = width
+            owner = self.spec.elements[owner_index]
+            fixed = (owner.is_fix_dir_x, owner.is_fix_dir_z, owner.is_fix_dir_y,
+                     owner.is_fix_rot_dir_x, owner.is_fix_rot_dir_z, owner.is_fix_rot_dir_y)
+            behaviours = tuple("Fixed" if value else "Free" for value in fixed)
+            stiffness = [-1.0 if value else 0.0 for value in fixed]
+            if not owner.is_fix_dir_z:
+                # GeometryRestraint.SetRestraintK changes Elastic back to Fixed;
+                # BridgeMesher then sets K2 to Kz times the GLR footprint area.
+                behaviours = behaviours[:1] + ("Fixed",) + behaviours[2:]
+                stiffness[1] = owner.Kz * strip_width * _dist(left, right)
+            stiffness_tuple = tuple(stiffness)
             glr_key = self._next_glr_key
             self._next_glr_key += 1
             glr = GeneratedGeometryLineRestraint(
@@ -852,39 +943,51 @@ class CSharpMesher:
                 node_key1=right_key,
                 node_key2=left_key,
                 b=strip_width,
+                k=stiffness_tuple,
+                behaviours=behaviours,
             )
             self._glrs.append(glr)
 
-            nc_left = self._node_c(left_key)
-            nc_right = self._node_c(right_key)
-            half = strip_width / 2.0
-            point1 = Point3D(left.x, strip_y - half, left.z)
-            point2 = Point3D(right.x, strip_y - half, right.z)
-            point3 = Point3D(right.x, strip_y + half, right.z)
-            point4 = Point3D(left.x, strip_y + half, left.z)
-            restraint = GeneratedRestraint(
-                key=self._next_restraint_key,
-                name=str(self._next_restraint_key),
-                node_key1=left_key,
-                node_key2=right_key,
-                node_c_key1=nc_left,
-                node_c_key2=nc_right,
-                computational_element_key=quad_key,
-                computational_element_type="Quad",
-                computational_element_edge=0,
-                material_key=0,
-                parent_key=glr_key,
-                parent_type_element="GeometryLineRestraint",
-                k=(-1.0, -1.0, -1.0, -1.0, -1.0, -1.0),
-                g=Point3D((left.x + right.x) / 2.0, strip_y, left.z),
-                point1=point1,
-                point2=point2,
-                point3=point3,
-                point4=point4,
-                foundation_tag=self._foundation_tag(owner_index),
-            )
-            self._next_restraint_key += 1
-            self._restraints.append(restraint)
+            for quad in quads:
+                edge_left_key, edge_right_key = quad.node_keys[:2]
+                edge_left, edge_right = self.nodes[edge_left_key], self.nodes[edge_right_key]
+                if edge_right.x < edge_left.x:
+                    edge_left_key, edge_right_key = edge_right_key, edge_left_key
+                    edge_left, edge_right = edge_right, edge_left
+                nc_left = self._node_c(edge_left_key)
+                nc_right = self._node_c(edge_right_key)
+                half = strip_width / 2.0
+                angle = math.radians(self.spec.definition.inclination_angle)
+                dx, dy = half * math.sin(angle), half * math.cos(angle)
+                point1 = Point3D(edge_left.x - dx, strip_y - dy, edge_left.z)
+                point2 = Point3D(edge_right.x - dx, strip_y - dy, edge_right.z)
+                point3 = Point3D(edge_right.x + dx, strip_y + dy, edge_right.z)
+                point4 = Point3D(edge_left.x + dx, strip_y + dy, edge_left.z)
+                restraint = GeneratedRestraint(
+                    key=self._next_restraint_key,
+                    name=str(self._next_restraint_key),
+                    node_key1=edge_left_key,
+                    node_key2=edge_right_key,
+                    node_c_key1=nc_left,
+                    node_c_key2=nc_right,
+                    computational_element_key=quad.key,
+                    computational_element_type="Quad",
+                    computational_element_edge=0,
+                    material_key=0,
+                    parent_key=glr_key,
+                    parent_type_element="GeometryLineRestraint",
+                    k=stiffness_tuple,
+                    behaviours=behaviours,
+                    g=Point3D((edge_left.x + edge_right.x) / 2.0, strip_y,
+                              (edge_left.z + edge_right.z) / 2.0),
+                    point1=point1,
+                    point2=point2,
+                    point3=point3,
+                    point4=point4,
+                    foundation_tag=self._foundation_tag(owner_index),
+                )
+                self._next_restraint_key += 1
+                self._restraints.append(restraint)
 
     def _find_strip_width(self, strip_y: float) -> float:
         centres = self._strip_centres()
@@ -906,18 +1009,41 @@ class CSharpMesher:
     # -- public entry point --------------------------------------------------
 
     def mesh(self) -> CSharpBridgeMesh:
+        if self.spec.wizard_type == "RailBridge2":
+            raise NotImplementedError("RailBridge2 wall and backfill meshing is not yet supported")
+        if self.spec.definition.attributes.get("IsVehicleLoad", "false").lower() == "true":
+            raise NotImplementedError("Native wizard vehicle-load generation is not yet supported")
+        if any(trunk.get("Trunk", "Straight") != "Straight" for trunk in self.spec.definition.trunks):
+            raise NotImplementedError("Curved C# bridge trunks are not yet supported by the mesher")
+        if any((item.spinta_passiva_sx or item.spinta_passiva_dx)
+               for item in self.spec.elements if isinstance(item, (Abutment, Pier))):
+            raise NotImplementedError("Passive earth-pressure surface restraints are not yet supported")
+        if self.spec.definition.inclination_angle:
+            definition = self.spec.definition
+            supports = [item for item in self.spec.elements if isinstance(item, (Abutment, Pier))]
+            if (abs(definition.width_top_pile - definition.width) > 1.0e-6 or
+                any(abs(item.w1) > 1.0e-6 or abs(item.w3) > 1.0e-6 or
+                    abs(item.w2 - definition.width) > 1.0e-6 or
+                    item.vertical_alignment != "Center" for item in supports)):
+                raise NotImplementedError(
+                    "Inclined bridges with tapered or offset supports are not yet supported"
+                )
         abscissa = self._abscissa()
         if not abscissa:
             raise ValueError("bridge abscissa is empty")
         self._total_length = abscissa[-1]
-        self._deck_z = max(
-            self.spec.elevations.get_z(x, 1)
-            for x in abscissa
-        )
+        # Bridge.H is WizardBridge.getHeigthBridge / Elevations.GetMaxZ,
+        # which considers the top of all three layers at every section.
+        self._deck_z = max((0.0, *(section.Z3 for section in self.spec.elevations.elevations)))
         spans = [element for element in self.spec.elements if isinstance(element, Span)]
+        templates = {int(template["Key"]): template for template in DEFAULT_TEMPLATES}
+        templates.update({int(template["Key"]): template for template in self.spec.material_templates})
         centres = self._strip_centres()
         for corsia, y in zip(self.spec.definition.corsias, centres):
             heights = 4 if corsia.height > 0.0 else 3
+            material = templates.get(corsia.material_key, {})
+            fill_override = (corsia.material_key
+                             if material.get("PurposeType") == "MasonryMaterial" else 0)
             self._add_bridge_row(
                 abscissa,
                 spans,
@@ -925,10 +1051,34 @@ class CSharpMesher:
                 corsia.width,
                 heights,
                 corsia.height,
-                corsia.material_key,
+                fill_override,
             )
         # C# AddSpallePile runs once after all transverse rows have been built.
         self._add_spalle_pile(centres)
+        # The native straight-strip transform shifts X by Y*tan(angle), then
+        # applies the longitudinal grade. C# measures strip widths along its
+        # skew normal, hence the 1/cos(angle) thickness multiplier.
+        slope = self.spec.definition.slope
+        angle = math.radians(self.spec.definition.inclination_angle)
+        if abs(math.cos(angle)) < 1.0e-9:
+            raise ValueError("inclination angle cannot make the strip width infinite")
+        if slope or angle:
+            scale = 1.0 / math.cos(angle)
+            for key, point in self.nodes.items():
+                x = point.x + point.y * math.tan(angle)
+                self.nodes[key] = Point3D(round(x, 4), point.y, round(point.z + x * slope, 4))
+            for quad in self.quads.values():
+                quad.thickness *= scale
+                quad.kinematics = compute_quad_kinematics(
+                    [self.nodes[key] for key in quad.node_keys],
+                    thickness=quad.thickness,
+                    out_of_plane_normal=(math.sin(angle), math.cos(angle), 0.0),
+                    allow_skew_normal=bool(angle),
+                )
+            self._foundation_edges = [
+                (owner, y, sub, quads, left, right, width * scale)
+                for owner, y, sub, quads, left, right, width in self._foundation_edges
+            ]
         self._build_foundation_supports()
         self._default_model_point()
         for index, element in enumerate(self.spec.piers, start=1):
